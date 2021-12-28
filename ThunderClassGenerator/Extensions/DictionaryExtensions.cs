@@ -16,5 +16,14 @@ namespace ThunderClassGenerator.Extensions
             }
             return dict[key] = new TValue();
         }
+
+        public static TValue TryGet<TKey, TValue>(this Dictionary<TKey, TValue> dict, TKey key, TValue defalutValue = default)
+        {
+            if (dict.TryGetValue(key, out var value))
+            {
+                return value;
+            }
+            return defalutValue;
+        }
     }
 }

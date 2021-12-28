@@ -6,12 +6,9 @@ using System.Threading.Tasks;
 
 namespace ThunderClassGenerator
 {
-    public class FieldDef
+    public class GenericDef
     {
-        public string Name { get; set; }
-        public SimpleTypeDef Type { get; set; }
+        public SimpleTypeDef TypeDef { get; set; }
         public List<GenericDef> GenericArgs { get; } = new();
-        public int GenericIndex { get; set; }
-        public int MetaFlags { get; set; }
     }
 }

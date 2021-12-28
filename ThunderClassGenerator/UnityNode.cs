@@ -18,5 +18,7 @@ namespace ThunderClassGenerator
         public byte TypeFlags { get; set; }
         public int MetaFlag { get; set; }
         public List<UnityNode> SubNodes { get; set; }
+        public UnityNode Parent { get; set; }
+        public SimpleTypeDef AssosiatedTypeDef { get; set; }
     }
 }

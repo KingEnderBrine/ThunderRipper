@@ -18,9 +18,20 @@ namespace ThunderClassGenerator
 
         public static void Main(string[] args)
         {
-            TypesReader.Test();
+            var info = JsonSerializer.Deserialize<Info>(File.ReadAllText(Path.Combine(@"D:\", "info.json")));
+            AssignNodeParents(info);
+            var types = new TypesReader().ReadTypes(info.Classes);
+
+            foreach (var typeDef in types)
+            {
+                var tree = GetOrCreateTree(typeDef);
+                var root = tree.GetRoot();
+                root = new AddFields(typeDef).Visit(root).NormalizeWhitespace();
+                tree = tree.WithRootAndOptions(root, tree.Options);
+                WriteTree(tree);
+            }
+
             return;
-            var info = JsonSerializer.Deserialize<Info>(File.ReadAllText(Path.Combine(@"D:\test\classdb\2017.1.0", "info.json")));
             var nodes = new HashSet<UnityNode>();
             foreach (var @class in info.Classes)
             {
@@ -48,6 +59,30 @@ namespace ThunderClassGenerator
             //ImportClassesFile(@"D:\test\classdb\2017.1.0");
             ImportInfoFile(@"D:\test\classdb\2017.1.0");
             //TestCodeModel();
+        }
+
+        private static void AssignNodeParents(Info info)
+        {
+            foreach (var @class in info.Classes)
+            {
+                if (@class.ReleaseRootNode != null)
+                {
+                    SetChildrenParent(@class.ReleaseRootNode);
+                }
+                if (@class.EditorRootNode != null)
+                {
+                    SetChildrenParent(@class.EditorRootNode);
+                }
+            }
+
+            static void SetChildrenParent(UnityNode node)
+            {
+                foreach (var cNode in node.SubNodes)
+                {
+                    cNode.Parent = node;
+                    SetChildrenParent(cNode);
+                }
+            }
         }
 
         public static void TestCodeModel()
@@ -219,7 +254,7 @@ namespace ThunderClassGenerator
 
         public static SyntaxTree GetOrCreateTree(SimpleTypeDef typeDef)
         {
-            var filePath = Path.Combine(Strings.SolutionFolder, Path.Combine(GetNamespaceString(typeDef).Split('.')), $"{typeDef.Name}.cs");
+            var filePath = Path.Combine(Strings.SolutionFolder, Path.Combine(GetNamespaceString(typeDef).Split('.')), $"{typeDef.VersionnedName}.cs");
             if (File.Exists(filePath))
             {
                 return CSharpSyntaxTree.ParseText(File.ReadAllText(filePath), new CSharpParseOptions(LangVersion), filePath);
@@ -229,25 +264,49 @@ namespace ThunderClassGenerator
 
         public static SyntaxTree CreateBaseClassSyntaxTree(SimpleTypeDef typeDef, string filePath)
         {
-            var root = SF.CompilationUnit(default, GetDefaultUsings(), default, GetDefaultMembers(typeDef));
+            var root = SF.CompilationUnit(default, GetDefaultUsings(typeDef), default, GetDefaultMembers(typeDef));
             return CSharpSyntaxTree.Create(root, new CSharpParseOptions(LangVersion), filePath);
         }
 
-        public static SyntaxList<UsingDirectiveSyntax> GetDefaultUsings()
+        public static SyntaxList<UsingDirectiveSyntax> GetDefaultUsings(SimpleTypeDef typeDef)
         {
-            var usings = new[]
+            var usings = new HashSet<string>
             {
-                SF.UsingDirective(SF.IdentifierName(Strings.CollectionsGeneric)),
-                SF.UsingDirective(SF.IdentifierName(Strings.ThunderRipperAttributes)),
-                SF.UsingDirective(SF.IdentifierName(Strings.ThunderRipperAssets)),
+                Strings.CollectionsGeneric,
+                Strings.ThunderRipperAttributes,
+                Strings.ThunderRipperAssets,
             };
 
-            return SF.List(usings);
+            if (typeDef.BaseType != null && !string.IsNullOrWhiteSpace(typeDef.BaseType.Namespace) && !typeDef.Namespace.StartsWith(typeDef.BaseType.Namespace))
+            {
+                usings.Add(GetNamespaceString(typeDef.BaseType));
+            }
+
+            foreach (var field in typeDef.Fields.Values)
+            {
+                if (field.GenericIndex != -1)
+                {
+                    continue;
+                }
+                usings.Add(GetNamespaceString(field.Type));
+                GoOverGenericArgs(field.GenericArgs);
+
+                void GoOverGenericArgs(IEnumerable<GenericDef> args)
+                {
+                    foreach (var genericArg in args)
+                    {
+                        usings.Add(GetNamespaceString(genericArg.TypeDef));
+                        GoOverGenericArgs(genericArg.GenericArgs);
+                    }
+                }
+            }
+
+            return SF.List(usings.Select(el => SF.UsingDirective(SF.IdentifierName(el))));
         }
 
         public static SyntaxList<MemberDeclarationSyntax> GetDefaultMembers(SimpleTypeDef typeDef)
         {
-            var @class = SF.ClassDeclaration(default, GetClassModifiers(typeDef), SF.Identifier(typeDef.Name), GetTypeParameters(typeDef), GetBase(typeDef), default, default);
+            var @class = SF.ClassDeclaration(default, GetClassModifiers(typeDef), SF.Identifier(typeDef.VersionnedName), GetTypeParameters(typeDef), GetBase(typeDef), default, GetFields(typeDef));
             var @namespace = SF.NamespaceDeclaration(GetNamespace(typeDef), default, default, SF.List(new MemberDeclarationSyntax[] { @class }));
             var comment =  SF.Comment(
 $@"//------------------------------
@@ -255,6 +314,41 @@ $@"//------------------------------
 //Don't do any modifications in this file by hand
 //------------------------------");
             return SF.List(new MemberDeclarationSyntax[] { @namespace.WithLeadingTrivia(comment) });
+        }
+
+        public static SyntaxList<MemberDeclarationSyntax> GetFields(SimpleTypeDef typeDef)
+        {
+            var fields = new List<MemberDeclarationSyntax>();
+
+            foreach (var field in typeDef.Fields.Values)
+            {
+                fields.Add(SF.PropertyDeclaration(SF.List<AttributeListSyntax>(), SF.TokenList(), SF.ParseTypeName(GetFieldTypeName(field)), null, SF.Identifier(field.Name), SF.AccessorList(SF.List(new[] { SF.AccessorDeclaration(SyntaxKind.GetAccessorDeclaration).WithSemicolonToken(SF.Token(SyntaxKind.SemicolonToken)), SF.AccessorDeclaration(SyntaxKind.SetAccessorDeclaration).WithSemicolonToken(SF.Token(SyntaxKind.SemicolonToken)) }))).WithTrailingTrivia(SF.LineFeed));
+            }
+
+            return SF.List(fields);
+        }
+
+        public static string GetFieldTypeName(FieldDef field)
+        {
+            if (field.GenericIndex != -1)
+            {
+                return $"T{field.GenericIndex + 1}";
+            }
+            if (field.Type.GenericCount == 0)
+            {
+                return field.Type.VersionnedName;
+            }
+
+            return $"{field.Type.VersionnedName}<{string.Join(", ", field.GenericArgs.Select(el => GetGenericArgTypeName(el)))}>";
+        }
+
+        public static string GetGenericArgTypeName(GenericDef genericDef)
+        {
+            if (genericDef.TypeDef.GenericCount == 0)
+            {
+                return genericDef.TypeDef.VersionnedName;
+            }
+            return $"{genericDef.TypeDef.VersionnedName}<{string.Join(", ", genericDef.GenericArgs.Select(el => GetGenericArgTypeName(el)))}>";
         }
 
         public static TypeParameterListSyntax GetTypeParameters(SimpleTypeDef typeDef)
@@ -280,7 +374,7 @@ $@"//------------------------------
 
         public static string GetNamespaceString(SimpleTypeDef typeDef)
         {
-            return string.IsNullOrWhiteSpace(typeDef.Namespace) ? Strings.OutputNamespace : $"{Strings.OutputNamespace}.{typeDef.Namespace}";
+            return string.IsNullOrWhiteSpace(typeDef.Namespace) ? Strings.OutputNamespace : typeDef is PredefinedTypeDef ? typeDef.Namespace : $"{Strings.OutputNamespace}.{typeDef.Namespace}";
         }
 
         public static SyntaxTokenList GetClassModifiers(SimpleTypeDef typeDef)
@@ -305,9 +399,9 @@ $@"//------------------------------
 
             IEnumerable<BaseTypeSyntax> GetBases()
             {
-                if (!string.IsNullOrWhiteSpace(typeDef.Base))
+                if (typeDef.BaseType != null)
                 {
-                    yield return SF.SimpleBaseType(SF.ParseTypeName(typeDef.Base));
+                    yield return SF.SimpleBaseType(SF.ParseTypeName(typeDef.BaseType.VersionnedName));
                 }
                 yield return SF.SimpleBaseType(SF.ParseTypeName(Strings.IAsset));
             }
