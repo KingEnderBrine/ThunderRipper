@@ -291,11 +291,11 @@ namespace ThunderClassGenerator
                 usings.Add(GetNamespaceString(field.Type));
                 GoOverGenericArgs(field.GenericArgs);
 
-                void GoOverGenericArgs(IEnumerable<GenericDef> args)
+                void GoOverGenericArgs(IEnumerable<TypeUsageDef> args)
                 {
                     foreach (var genericArg in args)
                     {
-                        usings.Add(GetNamespaceString(genericArg.TypeDef));
+                        usings.Add(GetNamespaceString(genericArg.Type));
                         GoOverGenericArgs(genericArg.GenericArgs);
                     }
                 }
@@ -342,13 +342,13 @@ $@"//------------------------------
             return $"{field.Type.VersionnedName}<{string.Join(", ", field.GenericArgs.Select(el => GetGenericArgTypeName(el)))}>";
         }
 
-        public static string GetGenericArgTypeName(GenericDef genericDef)
+        public static string GetGenericArgTypeName(TypeUsageDef genericDef)
         {
-            if (genericDef.TypeDef.GenericCount == 0)
+            if (genericDef.Type.GenericCount == 0)
             {
-                return genericDef.TypeDef.VersionnedName;
+                return genericDef.Type.VersionnedName;
             }
-            return $"{genericDef.TypeDef.VersionnedName}<{string.Join(", ", genericDef.GenericArgs.Select(el => GetGenericArgTypeName(el)))}>";
+            return $"{genericDef.Type.VersionnedName}<{string.Join(", ", genericDef.GenericArgs.Select(el => GetGenericArgTypeName(el)))}>";
         }
 
         public static TypeParameterListSyntax GetTypeParameters(SimpleTypeDef typeDef)

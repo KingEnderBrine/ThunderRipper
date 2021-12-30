@@ -9,9 +9,7 @@ namespace ThunderClassGenerator
     public class FieldDef
     {
         public string Name { get; set; }
-        public SimpleTypeDef Type { get; set; }
-        public List<GenericDef> GenericArgs { get; } = new();
-        public int GenericIndex { get; set; }
+        public TypeUsageDef Type { get; set; }
         public int MetaFlags { get; set; }
     }
 }

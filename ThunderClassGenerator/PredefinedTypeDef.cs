@@ -53,5 +53,10 @@ namespace ThunderClassGenerator
         //public static PredefinedTypeDef[] All { get; } = typeof(PredefinedTypeDef).GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static).Where(el => el.PropertyType == typeof(PredefinedTypeDef)).Select(el => el.GetValue(null) as PredefinedTypeDef).ToArray();
 
         public override string VersionnedName => Name;
+
+        public PredefinedTypeDef()
+        {
+            Done = true;
+        }
     }
 }

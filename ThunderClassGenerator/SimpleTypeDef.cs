@@ -20,7 +20,7 @@ namespace ThunderClassGenerator
         public int TypeID { get; set; }
         public Dictionary<string, FieldDef> Fields { get; } = new();
         public Dictionary<string, int> GenericFields { get; } = new();
-
+        public bool Done { get; set; }
         public virtual string VersionnedName => $"{Name}_V{Version}";
     }
 }
