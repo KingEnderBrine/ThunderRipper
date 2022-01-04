@@ -15,6 +15,86 @@ namespace ThunderClassGenerator
     public static class ClassGenerator
     {
         private static LanguageVersion LangVersion => LanguageVersion.CSharp7;
+        private static string[] Keywords { get; } = new[]
+        {
+            "abstract",
+            "as",
+            "base",
+            "bool",
+            "break",
+            "byte",
+            "case",
+            "catch",
+            "char",
+            "checked",
+            "class",
+            "const",
+            "continue",
+            "decimal",
+            "default",
+            "delegate",
+            "do",
+            "double",
+            "else",
+            "enum",
+            "event",
+            "explicit",
+            "extern",
+            "false",
+            "finally",
+            "fixed",
+            "float",
+            "for",
+            "foreach",
+            "goto",
+            "if",
+            "implicit",
+            "in",
+            "int",
+            "interface",
+            "internal",
+            "is",
+            "lock",
+            "long",
+            "namespace",
+            "new",
+            "null",
+            "object",
+            "operator",
+            "out",
+            "override",
+            "params",
+            "private",
+            "protected",
+            "public",
+            "readonly",
+            "ref",
+            "return",
+            "sbyte",
+            "sealed",
+            "short",
+            "sizeof",
+            "stackalloc",
+            "static",
+            "string",
+            "struct",
+            "switch",
+            "this",
+            "throw",
+            "true",
+            "try",
+            "typeof",
+            "uint",
+            "ulong",
+            "unchecked",
+            "unsafe",
+            "ushort",
+            "using",
+            "virtual",
+            "void",
+            "volatile",
+            "while",
+        };
 
         public static void Main(string[] args)
         {
@@ -284,19 +364,18 @@ namespace ThunderClassGenerator
 
             foreach (var field in typeDef.Fields.Values)
             {
-                if (field.GenericIndex != -1)
-                {
-                    continue;
-                }
-                usings.Add(GetNamespaceString(field.Type));
-                GoOverGenericArgs(field.GenericArgs);
+                GoOverGenericArgs(field.Type);
 
-                void GoOverGenericArgs(IEnumerable<TypeUsageDef> args)
+                void GoOverGenericArgs(TypeUsageDef usageDef)
                 {
-                    foreach (var genericArg in args)
+                    if (usageDef.GenericIndex != -1)
                     {
-                        usings.Add(GetNamespaceString(genericArg.Type));
-                        GoOverGenericArgs(genericArg.GenericArgs);
+                        return;
+                    }
+                    usings.Add(GetNamespaceString(usageDef.Type));
+                    foreach (var genericArg in usageDef.GenericArgs)
+                    {
+                        GoOverGenericArgs(genericArg);
                     }
                 }
             }
@@ -308,12 +387,12 @@ namespace ThunderClassGenerator
         {
             var @class = SF.ClassDeclaration(default, GetClassModifiers(typeDef), SF.Identifier(typeDef.VersionnedName), GetTypeParameters(typeDef), GetBase(typeDef), default, GetFields(typeDef));
             var @namespace = SF.NamespaceDeclaration(GetNamespace(typeDef), default, default, SF.List(new MemberDeclarationSyntax[] { @class }));
-            var comment =  SF.Comment(
+/*            var comment =  SF.Comment(
 $@"//------------------------------
 //This class is managed by {nameof(ThunderClassGenerator)}
 //Don't do any modifications in this file by hand
-//------------------------------");
-            return SF.List(new MemberDeclarationSyntax[] { @namespace.WithLeadingTrivia(comment) });
+//------------------------------");*/
+            return SF.List(new MemberDeclarationSyntax[] { @namespace/*.WithLeadingTrivia(comment)*/ });
         }
 
         public static SyntaxList<MemberDeclarationSyntax> GetFields(SimpleTypeDef typeDef)
@@ -322,33 +401,69 @@ $@"//------------------------------
 
             foreach (var field in typeDef.Fields.Values)
             {
-                fields.Add(SF.PropertyDeclaration(SF.List<AttributeListSyntax>(), SF.TokenList(), SF.ParseTypeName(GetFieldTypeName(field)), null, SF.Identifier(field.Name), SF.AccessorList(SF.List(new[] { SF.AccessorDeclaration(SyntaxKind.GetAccessorDeclaration).WithSemicolonToken(SF.Token(SyntaxKind.SemicolonToken)), SF.AccessorDeclaration(SyntaxKind.SetAccessorDeclaration).WithSemicolonToken(SF.Token(SyntaxKind.SemicolonToken)) }))).WithTrailingTrivia(SF.LineFeed));
+                if (field.ExistsInBase)
+                {
+                    continue;
+                }
+                fields.Add(
+                    SF.PropertyDeclaration(
+                        SF.List(
+                            new[] 
+                            { 
+                                SF.AttributeList(
+                                    SF.SeparatedList(
+                                        new[] 
+                                        { 
+                                            SF.Attribute(
+                                                SF.IdentifierName("SerializedName"),
+                                                SF.AttributeArgumentList(
+                                                    SF.SeparatedList(
+                                                        new[]
+                                                        {
+                                                            SF.AttributeArgument(
+                                                                SF.LiteralExpression(SyntaxKind.StringLiteralExpression, SF.Literal(field.Name)))
+                                                        })))
+                                        }))
+                            }),
+                        SF.TokenList(SF.Token(SyntaxKind.PublicKeyword)),
+                        SF.ParseTypeName(GetFieldTypeName(field.Type)),
+                        null,
+                        GetValidFieldName(field.Name),
+                        SF.AccessorList(
+                            SF.List(
+                                new[]
+                                {
+                                    SF.AccessorDeclaration(SyntaxKind.GetAccessorDeclaration).WithSemicolonToken(SF.Token(SyntaxKind.SemicolonToken)),
+                                    SF.AccessorDeclaration(SyntaxKind.SetAccessorDeclaration).WithSemicolonToken(SF.Token(SyntaxKind.SemicolonToken))
+                                }))).WithTrailingTrivia(SF.LineFeed));
             }
 
             return SF.List(fields);
         }
 
-        public static string GetFieldTypeName(FieldDef field)
+        public static SyntaxToken GetValidFieldName(string fieldName)
         {
-            if (field.GenericIndex != -1)
+            var newName = fieldName;
+            if (Regex.IsMatch(newName, @"^\d") || Keywords.Contains(newName))
             {
-                return $"T{field.GenericIndex + 1}";
+                newName = '_' + newName;
             }
-            if (field.Type.GenericCount == 0)
-            {
-                return field.Type.VersionnedName;
-            }
-
-            return $"{field.Type.VersionnedName}<{string.Join(", ", field.GenericArgs.Select(el => GetGenericArgTypeName(el)))}>";
+            newName = Regex.Replace(newName, @"\W", "_");
+            return SF.Identifier(newName);
         }
 
-        public static string GetGenericArgTypeName(TypeUsageDef genericDef)
+        public static string GetFieldTypeName(TypeUsageDef usageDef)
         {
-            if (genericDef.Type.GenericCount == 0)
+            if (usageDef.GenericIndex != -1)
             {
-                return genericDef.Type.VersionnedName;
+                return $"T{usageDef.GenericIndex + 1}";
             }
-            return $"{genericDef.Type.VersionnedName}<{string.Join(", ", genericDef.GenericArgs.Select(el => GetGenericArgTypeName(el)))}>";
+            if (usageDef.Type.GenericCount == 0)
+            {
+                return usageDef.Type.VersionnedName;
+            }
+
+            return $"{usageDef.Type.VersionnedName}<{string.Join(", ", usageDef.GenericArgs.Select(el => GetFieldTypeName(el)))}>";
         }
 
         public static TypeParameterListSyntax GetTypeParameters(SimpleTypeDef typeDef)

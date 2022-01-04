@@ -16,7 +16,7 @@ namespace ThunderClassGenerator
         //e.g. Test<T1, T2<T4>, T3<T5, T6>> would result in 3 first level generics
         //https://docs.microsoft.com/en-us/dotnet/standard/base-types/grouping-constructs-in-regular-expressions#balancing-group-definitions
         private static Regex GenericPattern { get; } = new("^(?'name'[^<>]+?)<(?'firstLevel'([^<>]+(((?'Open'<)[^<>]+)+((?'Close-Open'>))+)*(?(Open)(?!))),?)+>$", RegexOptions.Compiled);
-        private static string[] ExistingTypesMapping { get; } = new[]
+        private static string[] ExistingTypes { get; } = new[]
         {
             "bool",
             "char",
@@ -62,6 +62,8 @@ namespace ThunderClassGenerator
 
         public IEnumerable<SimpleTypeDef> ReadTypes(IEnumerable<UnityClass> classes, bool release = true)
         {
+            FixClasses(classes, release);
+
             var types = new Dictionary<(string, short), SimpleTypeDef>();
             var typePermutations = new Dictionary<(string, short), TypePermutations>();
             foreach (var @class in classes)
@@ -83,13 +85,13 @@ namespace ThunderClassGenerator
                     TypeID = permutations.Class?.TypeID ?? -1,
                     Version = row.Key.Item2,
                     Name = row.Key.Item1,
+                    Done = permutations.Nodes.Count == 0,
                 };
-                /*foreach (var fieldRow in CalculateGenericFields(permutations.Nodes))
+                var firstNode = permutations.Nodes.FirstOrDefault();
+                if (firstNode != null && IsGenericTypeName(firstNode.TypeName, out _, out var count, out _))
                 {
-                    typeDef.GenericFields[fieldRow.Key] = fieldRow.Value;
+                    typeDef.GenericCount = count;
                 }
-                typeDef.GenericCount = typeDef.GenericFields.Any() ? typeDef.GenericFields.Max(el => el.Value) : permutations.GenericCount;
-                */
                 foreach (var node in row.Value.Nodes)
                 {
                     node.AssosiatedTypeDef = typeDef;
@@ -98,31 +100,76 @@ namespace ThunderClassGenerator
 
             foreach (var type in types.Values)
             {
-                ProcessTypeFields(type, types, typePermutations);
-            }
-
-            /*foreach (var row in types)
-            {
-                var permutations = typePermutations[row.Key];
-                var firstNode = permutations.Nodes.FirstOrDefault();
-                if (firstNode == null)
-                {
-                    continue;
-                }
-                var type = row.Value;
                 if (!string.IsNullOrWhiteSpace(type.Base))
                 {
                     type.BaseType = types.FirstOrDefault(el => el.Key.Item1 == type.Base).Value;
                 }
-                foreach (var fieldNode in firstNode.SubNodes)
+            }
+            var inverseOrderTypes = new HashSet<SimpleTypeDef>();
+            foreach (var @class in classes)
+            {
+                GatherTypesFromClassRecursive(@class);
+            }
+
+            void GatherTypesFromClassRecursive(UnityClass @class)
+            {
+                if (ExistingTypes.Contains(@class.Name.ToLowerInvariant()))
                 {
-                    var fieldDef = GetFieldDefForNode(fieldNode, types);
-
-                    type.Fields.Add(fieldDef.Name, fieldDef);
+                    return;
                 }
-            }*/
-
+                if (!string.IsNullOrWhiteSpace(@class.Base))
+                {
+                    GatherTypesFromClassRecursive(classes.FirstOrDefault(el => el.Name == @class.Base));
+                }
+                var node = release ? @class.ReleaseRootNode : @class.EditorRootNode;
+                if (node != null)
+                {
+                    GatherTypesFromNodeRecursive(node);
+                }
+                var type = types.Values.FirstOrDefault(el => el.Name == @class.Name);
+                inverseOrderTypes.Add(type);
+            }
+            void GatherTypesFromNodeRecursive(UnityNode node)
+            {
+                foreach (var cNode in node.SubNodes)
+                {
+                    GatherTypesFromNodeRecursive(cNode);
+                }
+                if (node.AssosiatedTypeDef != null && node.AssosiatedTypeDef is not PredefinedTypeDef)
+                {
+                    inverseOrderTypes.Add(node.AssosiatedTypeDef);
+                }
+            }
+            foreach (var type in inverseOrderTypes)
+            {
+                ProcessTypeFields(type, types, typePermutations);
+            }
+            var test = types.Values.Except(inverseOrderTypes);
             return types.Values;
+        }
+
+        private void FixClasses(IEnumerable<UnityClass> classes, bool release)
+        {
+            foreach (var @class in classes)
+            {
+                var node = release ? @class.ReleaseRootNode : @class.EditorRootNode;
+                if (node == null || @class.Name == node.TypeName)
+                {
+                    continue;
+                }
+
+                var correctClass = classes.FirstOrDefault(el => el.Name == node.TypeName);
+                if (release && correctClass.ReleaseRootNode == null)
+                {
+                    correctClass.ReleaseRootNode = node;
+                    @class.ReleaseRootNode = null;
+                }
+                else
+                {
+                    correctClass.EditorRootNode = node;
+                    @class.EditorRootNode = null;
+                }
+            }
         }
 
         private void ProcessTypeFields(SimpleTypeDef type, Dictionary<(string, short), SimpleTypeDef> types, Dictionary<(string, short), TypePermutations> typePermutations)
@@ -130,11 +177,6 @@ namespace ThunderClassGenerator
             if (type.Done)
             {
                 return;
-            }
-
-            if (!string.IsNullOrWhiteSpace(type.Base))
-            {
-                type.BaseType = types.FirstOrDefault(el => el.Key.Item1 == type.Base).Value;
             }
 
             var permutations = typePermutations[(type.Name, type.Version)];
@@ -145,27 +187,270 @@ namespace ThunderClassGenerator
                 return;
             }
 
-            foreach (var node in permutations.Nodes)
-            {
-                //if (genericFields.Count == startFieldTypes.Count)
-                //{
-                //    break;
-                //}
-                foreach (var field in node.SubNodes)
-                {
-                    ProcessTypeFields(field.AssosiatedTypeDef, types, typePermutations);
-
-                }
-            }
+            var groupItemComparer = new GroupItemComparer();
+            var genericFieldPaths = CalculateGenericFieldPaths(permutations, types);
+            var genericNodePaths = CalculateGenericNodePaths(permutations);
 
             foreach (var fieldNode in firstNode.SubNodes)
             {
                 var fieldDef = GetFieldDefForNode(fieldNode, types);
-
                 type.Fields.Add(fieldDef.Name, fieldDef);
             }
 
+            if (genericFieldPaths.Count > 0)
+            {
+                var groups = new HashSet<List<(string, List<byte>)>>(new ListComparer<(string, List<byte>)>() { ItemComparer = groupItemComparer });
+                foreach (var node in permutations.Nodes)
+                {
+                    var tmpGroups = new Dictionary<SimpleTypeDef, List<(string, List<byte>)>>();
+                    foreach (var pathRow in genericFieldPaths)
+                    {
+                        var typeUsage = GetFieldDefForNode(node.SubNodes.FirstOrDefault(el => el.Name == pathRow.Item1), types).Type;
+                        foreach (var i in pathRow.Item2)
+                        {
+                            typeUsage = typeUsage.GenericArgs[i];
+                        }
+
+                        var group = tmpGroups.GetOrAdd(typeUsage.Type);
+                        group.Add(pathRow);
+                    }
+                    foreach (var group in tmpGroups.Values)
+                    {
+                        groups.Add(group);
+                    }
+                }
+
+                var nodeGroups = new HashSet<List<(string, List<byte>)>>(new ListComparer<(string, List<byte>)>() { ItemComparer = groupItemComparer });
+                foreach (var node in permutations.Nodes)
+                {
+                    var tmpGroups = new Dictionary<SimpleTypeDef, List<(string, List<byte>)>>();
+                    foreach (var pathRow in genericNodePaths)
+                    {
+                        var cNode = node.SubNodes.FirstOrDefault(el => el.Name == pathRow.Item1);
+                        foreach (var i in pathRow.Item2)
+                        {
+                            cNode = cNode.SubNodes[i];
+                        }
+
+                        var group = tmpGroups.GetOrAdd(cNode.AssosiatedTypeDef);
+                        group.Add(pathRow);
+                    }
+                    foreach (var group in tmpGroups.Values)
+                    {
+                        nodeGroups.Add(group);
+                    }
+                }
+
+                var finalGroups = SplitGroups(groups, groupItemComparer).OrderBy(el => el.Min(e => genericFieldPaths.IndexOf(e))).ToList();
+
+                var typeToIndex = new Dictionary<SimpleTypeDef, int>();
+                for (var i = 0; i < finalGroups.Count; i++)
+                {
+                    var group = finalGroups[i];
+                    foreach (var pathRow in group)
+                    {
+                        var usage = TraverseFieldDef(type.Fields[pathRow.Item1], pathRow.Item2);
+                        usage.Type = null;
+                        usage.GenericArgs.Clear();
+                        usage.GenericIndex = i;
+                    }
+                }
+
+                type.GenericNodesPaths.AddRange(SplitGroups(nodeGroups, groupItemComparer).OrderBy(el => el.Min(e => genericNodePaths.IndexOf(e))).ToList());
+                type.GenericCount = finalGroups.Count;
+            }
+
+            foreach (var fieldRow in type.Fields)
+            {
+                if (FieldExistsInParent(fieldRow.Key, type))
+                {
+                    fieldRow.Value.ExistsInBase = true;
+                }
+            }
+            bool FieldExistsInParent(string fieldName, SimpleTypeDef type)
+            {
+                if (type.BaseType == null)
+                {
+                    return false;
+                }
+                if (type.BaseType.Fields.ContainsKey(fieldName))
+                {
+                    return true;
+                }
+                return FieldExistsInParent(fieldName, type.BaseType);
+            }
+
             type.Done = true;
+        }
+
+        private List<List<(string, List<byte>)>> SplitGroups(HashSet<List<(string, List<byte>)>> groups, IEqualityComparer<(string, List<byte>)> groupItemComparer)
+        {
+            var finalGroups = new List<List<(string, List<byte>)>>();
+            var removeFinalGroups = new List<List<(string, List<byte>)>>();
+            var addFinalGroups = new List<List<(string, List<byte>)>>();
+            foreach (var group in groups)
+            {
+                var reducedGroup = group;
+                foreach (var finalGroup in finalGroups)
+                {
+                    var finalReducedGroup = finalGroup.Except(reducedGroup, groupItemComparer).ToList();
+                    if (finalReducedGroup.Count != 0)
+                    {
+                        var finalOldGroup = finalGroup.Except(finalReducedGroup, groupItemComparer).ToList();
+                        if (finalOldGroup.Count != 0)
+                        {
+                            addFinalGroups.Add(finalReducedGroup);
+                            addFinalGroups.Add(finalOldGroup);
+                            removeFinalGroups.Add(finalGroup);
+                        }
+                    }
+                    reducedGroup = reducedGroup.Except(finalGroup, groupItemComparer).ToList();
+                    if (reducedGroup.Count == 0)
+                    {
+                        break;
+                    }
+                }
+                foreach (var finalGroup in removeFinalGroups)
+                {
+                    finalGroups.Remove(finalGroup);
+                }
+                finalGroups.AddRange(addFinalGroups);
+
+                if (reducedGroup.Count != 0)
+                {
+                    finalGroups.Add(reducedGroup);
+                }
+
+                removeFinalGroups.Clear();
+                addFinalGroups.Clear();
+            }
+
+            return finalGroups;
+        }
+
+        private List<(string, List<byte>)> CalculateGenericNodePaths(TypePermutations permutations)
+        {
+            var firstNode = permutations.Nodes.FirstOrDefault();
+            if (firstNode == null)
+            {
+                return new List<(string, List<byte>)>();
+            }
+
+            var groupItemComparer = new GroupItemComparer();
+            var genericFieldPaths = new HashSet<(string, List<byte>)>(groupItemComparer);
+
+            foreach (var node in permutations.Nodes)
+            {
+                for (var i = 0; i < node.SubNodes.Count; i++)
+                {
+                    var cNode = node.SubNodes[i];
+                    RecursiveGatherPaths(cNode, firstNode.SubNodes[i], new List<byte>());
+
+                    void RecursiveGatherPaths(UnityNode first, UnityNode second, IEnumerable<byte> path)
+                    {
+                        if (first.TypeName != second.TypeName)
+                        {
+                            genericFieldPaths.Add((cNode.Name, path.ToList()));
+                            return;
+                        }
+                        for (byte i = 0; i < first.SubNodes.Count; i++)
+                        {
+                            RecursiveGatherPaths(first.SubNodes[i], second.SubNodes[i], path.Append(i));
+                        }
+                    }
+                }
+            }
+
+            return ReorderAndRemoveIncludedPaths(genericFieldPaths, firstNode, groupItemComparer);
+        }
+
+        private List<(string, List<byte>)> CalculateGenericFieldPaths(TypePermutations permutations, Dictionary<(string, short), SimpleTypeDef> types)
+        {
+            var firstNode = permutations.Nodes.FirstOrDefault();
+            if (firstNode == null)
+            {
+                return new List<(string, List<byte>)>();
+            }
+
+            var groupItemComparer = new GroupItemComparer();
+            var genericFieldPaths = new HashSet<(string, List<byte>)>(groupItemComparer);
+            var firstNodeFieldDefs = firstNode.SubNodes.Select(el => GetFieldDefForNode(el, types)).ToList();
+
+            foreach (var node in permutations.Nodes)
+            {
+                for (var i = 0; i < node.SubNodes.Count; i++)
+                {
+                    var fieldDef = GetFieldDefForNode(node.SubNodes[i], types);
+                    RecursiveGatherPaths(fieldDef.Type, firstNodeFieldDefs[i].Type, new List<byte>());
+
+                    void RecursiveGatherPaths(TypeUsageDef first, TypeUsageDef second, IEnumerable<byte> path)
+                    {
+                        if (first.Type != second.Type)
+                        {
+                            genericFieldPaths.Add((fieldDef.Name, path.ToList()));
+                            return;
+                        }
+
+                        for (byte i = 0; i < first.GenericArgs.Count; i++)
+                        {
+                            RecursiveGatherPaths(first.GenericArgs[i], second.GenericArgs[i], path.Append(i));
+                        }
+                    }
+                }
+            }
+
+            return ReorderAndRemoveIncludedPaths(genericFieldPaths, firstNode, groupItemComparer);
+        }
+
+        private List<(string, List<byte>)> ReorderAndRemoveIncludedPaths(HashSet<(string, List<byte>)> genericFieldPaths, UnityNode firstNode, IComparer<(int, string, List<byte>)> groupItemComparer)
+        {
+            var orderedPaths = genericFieldPaths.OrderBy(el => (firstNode.SubNodes.FindIndex(e => e.Name == el.Item1), el.Item1, el.Item2), groupItemComparer).ToList();
+            var i = 1;
+            while (i < orderedPaths.Count)
+            {
+                var previous = orderedPaths[i - 1];
+                var current = orderedPaths[i];
+
+                if (previous.Item2.Count < current.Item2.Count)
+                {
+                    var containsPrevious = true;
+                    for (var j = 0; j < previous.Item2.Count; j++)
+                    {
+                        if (previous.Item2[j] != current.Item2[j])
+                        {
+                            containsPrevious = false;
+                            break;
+                        }
+                    }
+                    if (containsPrevious)
+                    {
+                        orderedPaths.RemoveAt(i);
+                        continue;
+                    }
+                }
+                i++;
+            }
+            return orderedPaths;
+        }
+
+        private static TypeUsageDef TraverseFieldDef(FieldDef fieldDef, IEnumerable<byte> path)
+        {
+            var typeUsage = fieldDef.Type;
+            foreach (var i in path)
+            {
+                typeUsage = typeUsage.GenericArgs[i];
+            }
+            return typeUsage;
+        }
+
+        private static UnityNode TraverseFieldNode(UnityNode node, IEnumerable<byte> path)
+        {
+            var cNode = node;
+            foreach (var i in path)
+            {
+                cNode = cNode.SubNodes[i];
+            }
+            return cNode;
         }
 
         /// <summary>
@@ -209,7 +494,7 @@ namespace ThunderClassGenerator
                     }
                     addPermutations.Add((typeName, firstNode.Version, permutations));
 
-                    static string GetParentName(UnityNode node) => ExistingTypesMapping.Contains(node.Parent.TypeName.ToLowerInvariant()) ? GetParentName(node.Parent) : node.Parent.TypeName;
+                    static string GetParentName(UnityNode node) => ExistingTypes.Contains(node.Parent.TypeName.ToLowerInvariant()) ? GetParentName(node.Parent) : node.Parent.TypeName;
                 }
             }
             foreach (var row in removePermutations)
@@ -222,113 +507,26 @@ namespace ThunderClassGenerator
             }
         }
 
-        private static Dictionary<string, int> CalculateGenericFields(List<UnityNode> nodes)
-        {
-            if (nodes.Count == 0)
-            {
-                return new Dictionary<string, int>();
-            }
-            var genericFields = new HashSet<string>();
-
-            var firstNode = nodes.First();
-            var startFieldTypes = firstNode.SubNodes.ToDictionary(el => el.Name, el => el.TypeName);
-            foreach (var node in nodes)
-            {
-                if (genericFields.Count == startFieldTypes.Count)
-                {
-                    break;
-                }
-                foreach (var field in node.SubNodes)
-                {
-                    if (startFieldTypes[field.Name] != field.TypeName)
-                    {
-                        genericFields.Add(field.Name);
-                    }
-                }
-            }
-
-            var groups = new HashSet<List<string>>(new ListComparer<string>());
-            foreach (var node in nodes)
-            {
-                var tmpGroups = new Dictionary<string, List<string>>();
-                foreach (var field in node.SubNodes)
-                {
-                    if (!genericFields.Contains(field.Name))
-                    {
-                        continue;
-                    }
-                    var group = tmpGroups.GetOrAdd(field.TypeName);
-                    group.Add(field.Name);
-                }
-                foreach (var group in tmpGroups.Values)
-                {
-                    groups.Add(group);
-                }
-            }
-
-            var finalGroups = new List<List<string>>();
-            var removeFinalGroups = new List<List<string>>();
-            var addFinalGroups = new List<List<string>>();
-            foreach (var group in groups)
-            {
-                var reducedGroup = group;
-                foreach (var finalGroup in finalGroups)
-                {
-                    var finalReducedGroup = finalGroup.Except(reducedGroup).ToList();
-                    if (finalReducedGroup.Count != 0)
-                    {
-                        var finalOldGroup = finalGroup.Except(finalReducedGroup).ToList();
-                        if (finalOldGroup.Count != 0)
-                        {
-                            addFinalGroups.Add(finalReducedGroup);
-                            addFinalGroups.Add(finalOldGroup);
-                            removeFinalGroups.Add(finalGroup);
-                        }
-                    }
-                    reducedGroup = reducedGroup.Except(finalGroup).ToList();
-                    if (reducedGroup.Count == 0)
-                    {
-                        break;
-                    }
-                }
-                foreach (var finalGroup in removeFinalGroups)
-                {
-                    finalGroups.Remove(finalGroup);
-                }
-                finalGroups.AddRange(addFinalGroups);
-
-                if (reducedGroup.Count != 0)
-                {
-                    finalGroups.Add(reducedGroup);
-                }
-
-                removeFinalGroups.Clear();
-                addFinalGroups.Clear();
-            }
-
-            return finalGroups.OrderBy(el => el.Min(e => firstNode.SubNodes.FindIndex(ele => ele.Name == e))).SelectMany((el, index) => el.Select(field => (field, index))).ToDictionary(el => el.field, el => el.index);
-        }
-
         private void GatherPermutations(UnityClass @class, bool release, Dictionary<(string, short), TypePermutations> typePermutations)
         {
             var node = release ? @class.ReleaseRootNode : @class.EditorRootNode;
+            if (ExistingTypes.Contains(@class.Name.ToLowerInvariant()))
+            {
+                return;
+            }
             var permutations = typePermutations.GetOrAdd((@class.Name, node?.Version ?? 1));
             permutations.Class = @class;
             if (node == null)
             {
                 return;
             }
-            permutations.Nodes.Add(node);
-            foreach (var cNode in node.SubNodes)
-            {
-                GatherPermutations(cNode, typePermutations);
-            }
+            GatherPermutations(node, typePermutations);
         }
 
         private void GatherPermutations(UnityNode node, Dictionary<(string, short), TypePermutations> typePermutations)
         {
             var typeLower = node.TypeName.ToLowerInvariant();
-            if (ExistingTypesMapping.Contains(typeLower))
+            if (ExistingTypes.Contains(typeLower))
             {
                 switch (typeLower)
                 {
@@ -351,9 +549,10 @@ namespace ThunderClassGenerator
                         GatherPermutations(node.SubNodes[1], typePermutations);
                         break;
                 }
+                node.AssosiatedTypeDef = GetPredefinedTypeDef(node);
                 return;
             }
-            _ = IsGenericType(node.TypeName, out var name, out var genericCount, out _);
+            _ = IsGenericTypeName(node.TypeName, out var name, out var genericCount, out _);
 
             var permutations = typePermutations.GetOrAdd((name, node.Version));
             permutations.Nodes.Add(node);
@@ -364,7 +563,7 @@ namespace ThunderClassGenerator
             }
         }
 
-        private static bool IsGenericType(string typeName, out string nameWithoutGeneric, out int genericCount, out string[] genericArgs)
+        private static bool IsGenericTypeName(string typeName, out string nameWithoutGeneric, out int genericCount, out string[] genericArgs)
         {
             var match = GenericPattern.Match(typeName);
             if (!match.Success)
@@ -395,8 +594,60 @@ namespace ThunderClassGenerator
 
         private static TypeUsageDef GetTypeUsageDefForNode(UnityNode node, Dictionary<(string, short), SimpleTypeDef> otherTypeDefs)
         {
-            var typeLower = node.TypeName.ToLower();
-            var typeDef = typeLower switch
+            var typeDef = GetPredefinedTypeDef(node) ?? otherTypeDefs[(node.AssosiatedTypeDef.Name, node.Version)];
+
+            var genericDef = new TypeUsageDef
+            {
+                Type = typeDef,
+            };
+
+            var typeLower = node.TypeName.ToLowerInvariant();
+            switch (typeLower)
+            {
+                case "pair":
+                    genericDef.GenericArgs.Add(GetTypeUsageDefForNode(node.SubNodes[0], otherTypeDefs));
+                    genericDef.GenericArgs.Add(GetTypeUsageDefForNode(node.SubNodes[1], otherTypeDefs));
+                    break;
+                case "map":
+                    var pairNode = node.SubNodes[0].SubNodes[1];
+                    genericDef.GenericArgs.Add(GetTypeUsageDefForNode(pairNode.SubNodes[0], otherTypeDefs));
+                    genericDef.GenericArgs.Add(GetTypeUsageDefForNode(pairNode.SubNodes[1], otherTypeDefs));
+                    break;
+                case "fixed_bitset":
+                case "staticvector":
+                case "vector":
+                case "set":
+                    genericDef.GenericArgs.Add(GetTypeUsageDefForNode(node.SubNodes[0].SubNodes[1], otherTypeDefs));
+                    break;
+                //case "array":
+                case "typelessdata":
+                    genericDef.GenericArgs.Add(GetTypeUsageDefForNode(node.SubNodes[1], otherTypeDefs));
+                    break;
+                default:
+                    if (IsGenericTypeName(node.TypeName, out _, out _, out var args))
+                    {
+                        genericDef.GenericArgs.AddRange(args.Select(el => new TypeUsageDef { Type = otherTypeDefs.FirstOrDefault(e => e.Key.Item1 == el).Value }));
+                    }
+                    else if (typeDef.IsGeneric)
+                    {
+                        foreach (var pathRows in typeDef.GenericNodesPaths)
+                        {
+                            var firstRow = pathRows[0];
+                            var cNode = TraverseFieldNode(node.SubNodes.FirstOrDefault(el => el.Name == firstRow.Item1), firstRow.Item2);
+                            var def = GetTypeUsageDefForNode(cNode, otherTypeDefs);
+                            genericDef.GenericArgs.Add(def);
+                        }
+                    }
+                    break;
+            }
+
+            return genericDef;
+        }
+
+        private static SimpleTypeDef GetPredefinedTypeDef(UnityNode node)
+        {
+            var typeLower = node.TypeName.ToLowerInvariant();
+            return typeLower switch
             {
                 "bool" => PredefinedTypeDef.Bool,
                 "char" => PredefinedTypeDef.Char,
@@ -434,44 +685,8 @@ namespace ThunderClassGenerator
                 "set" => PredefinedTypeDef.HashSet,
                 "typelessdata" => PredefinedTypeDef.List,
                 //"array" => PredefinedTypeDef.List,
-                _ => otherTypeDefs[(node.AssosiatedTypeDef.Name, node.Version)]
+                _ => null
             };
-
-            var genericDef = new TypeUsageDef
-            {
-                Type = typeDef,
-            };
-
-            switch (typeLower)
-            {
-                case "pair":
-                    genericDef.GenericArgs.Add(GetTypeUsageDefForNode(node.SubNodes[0], otherTypeDefs));
-                    genericDef.GenericArgs.Add(GetTypeUsageDefForNode(node.SubNodes[1], otherTypeDefs));
-                    break;
-                case "map":
-                    var pairNode = node.SubNodes[0].SubNodes[1];
-                    genericDef.GenericArgs.Add(GetTypeUsageDefForNode(pairNode.SubNodes[0], otherTypeDefs));
-                    genericDef.GenericArgs.Add(GetTypeUsageDefForNode(pairNode.SubNodes[1], otherTypeDefs));
-                    break;
-                case "fixed_bitset":
-                case "staticvector":
-                case "vector":
-                case "set":
-                    genericDef.GenericArgs.Add(GetTypeUsageDefForNode(node.SubNodes[0].SubNodes[1], otherTypeDefs));
-                    break;
-                //case "array":
-                case "typelessdata":
-                    genericDef.GenericArgs.Add(GetTypeUsageDefForNode(node.SubNodes[1], otherTypeDefs));
-                    break;
-                default:
-                    if (IsGenericType(node.TypeName, out _, out _, out var args))
-                    {
-                        genericDef.GenericArgs.AddRange(args.Select(el => new TypeUsageDef { Type = otherTypeDefs.FirstOrDefault(e => e.Key.Item1 == el).Value }));
-                    }
-                    break;
-            }
-
-            return genericDef;
         }
 
 
@@ -486,15 +701,65 @@ namespace ThunderClassGenerator
         {
             public IEqualityComparer<T> ItemComparer { get; set; }
             public Func<T, int> ItemHashFunc { get; set; }
+            public bool StrictOrder { get; set; }
 
             public bool Equals(List<T> x, List<T> y)
             {
-                return x.Count == y.Count && !x.Where(el => !y.Contains(el, ItemComparer)).Any();
+                return x.Count == y.Count && !x.Where((el, i) => StrictOrder ? !ItemComparer.Equals(el, y[i]) : !y.Contains(el, ItemComparer)).Any();
             }
 
             public int GetHashCode([DisallowNull] List<T> obj)
             {
-                return obj.Select(el => ItemHashFunc == null ? el.GetHashCode() : ItemHashFunc(el)).Aggregate((total, el) => total ^ el);
+                return obj.Any() ? obj.Select(el => ItemHashFunc == null ? el.GetHashCode() : ItemHashFunc(el)).Aggregate((total, el) => total ^ el) : 0;
+            }
+        }
+
+        private class GroupItemComparer : IEqualityComparer<(string, List<byte>)>, IComparer<(int, string, List<byte>)>
+        {
+            public int Compare((int, string, List<byte>) x, (int, string, List<byte>) y)
+            {
+                if (x.Item1 < y.Item1)
+                {
+                    return -1;
+                }
+                if (x.Item1 > y.Item1)
+                {
+                    return 1;
+                }
+
+                var count = Math.Min(x.Item3.Count, y.Item3.Count);
+                for (var i = 0; i < count; i++)
+                {
+                    if (x.Item3[i] < y.Item3[i])
+                    {
+                        return -1;
+                    }
+                    if (x.Item3[i] > y.Item3[i])
+                    {
+                        return 1;
+                    }
+                }
+
+                if (x.Item3.Count < y.Item3.Count)
+                {
+                    return -1;
+                }
+                if (x.Item3.Count > y.Item3.Count)
+                {
+                    return 1;
+                }
+
+                return 0;
+            }
+
+            public bool Equals((string, List<byte>) x, (string, List<byte>) y)
+            {
+                return x.Item1 == y.Item1 && x.Item2.Count == y.Item2.Count && x.Item2.All((el, i) => el == y.Item2[i]);
+            }
+
+            public int GetHashCode([DisallowNull] (string, List<byte>) obj)
+            {
+                return HashCode.Combine(obj.Item1.GetHashCode(), obj.Item2.Any() ? obj.Item2.Select(el => el.GetHashCode()).Aggregate((total, el) => total ^ el) : 0);
             }
         }
 
