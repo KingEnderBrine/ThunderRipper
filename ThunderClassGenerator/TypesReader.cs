@@ -63,6 +63,7 @@ namespace ThunderClassGenerator
         public IEnumerable<SimpleTypeDef> ReadTypes(IEnumerable<UnityClass> classes, bool release = true)
         {
             FixClasses(classes, release);
+            FixNodes(classes, release);
 
             var types = new Dictionary<(string, short), SimpleTypeDef>();
             var typePermutations = new Dictionary<(string, short), TypePermutations>();
@@ -146,6 +147,34 @@ namespace ThunderClassGenerator
             }
             var test = types.Values.Except(inverseOrderTypes);
             return types.Values;
+        }
+
+        private void FixNodes(IEnumerable<UnityClass> classes, bool release)
+        {
+            foreach (var @class in classes)
+            {
+                var node = release ? @class.ReleaseRootNode : @class.EditorRootNode;
+                if (node == null)
+                {
+                    continue;
+                }
+                FixNode(node);
+            }
+        }
+
+        private void FixNode(UnityNode node)
+        {
+            if (node.TypeName == "string" && node.SubNodes.FirstOrDefault()?.TypeName == "int")
+            {
+                node.TypeName = "int";
+                node.MetaFlag = node.SubNodes.FirstOrDefault().MetaFlag;
+                node.SubNodes.Clear();
+                return;
+            }
+            foreach (var cNode in node.SubNodes)
+            {
+                FixNode(cNode);
+            }
         }
 
         private void FixClasses(IEnumerable<UnityClass> classes, bool release)
