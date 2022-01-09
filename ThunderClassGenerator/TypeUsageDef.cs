@@ -12,6 +12,7 @@ namespace ThunderClassGenerator
         public SimpleTypeDef Type { get; set; }
         public List<TypeUsageDef> GenericArgs { get; } = new();
         public int GenericIndex { get; set; } = -1;
+        public int MetaFlags { get; set; }
 
         public bool Equals(TypeUsageDef other)
         {

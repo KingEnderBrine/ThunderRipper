@@ -10,7 +10,6 @@ namespace ThunderClassGenerator
     {
         public string Name { get; set; }
         public TypeUsageDef Type { get; set; }
-        public int MetaFlags { get; set; }
         public bool ExistsInBase { get; set; }
     }
 }

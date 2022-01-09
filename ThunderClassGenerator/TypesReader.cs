@@ -62,6 +62,7 @@ namespace ThunderClassGenerator
 
         public IEnumerable<SimpleTypeDef> ReadTypes(IEnumerable<UnityClass> classes, bool release = true)
         {
+            AssignNodeParents(classes);
             FixClasses(classes, release);
             FixNodes(classes, release);
 
@@ -77,6 +78,7 @@ namespace ThunderClassGenerator
             foreach (var row in typePermutations)
             {
                 var permutations = row.Value;
+                var firstNode = permutations.Nodes.FirstOrDefault();
                 var typeDef = types[row.Key] = new SimpleTypeDef
                 {
                     Base = permutations.Class?.Base ?? string.Empty,
@@ -88,10 +90,13 @@ namespace ThunderClassGenerator
                     Name = row.Key.Item1,
                     Done = permutations.Nodes.Count == 0,
                 };
-                var firstNode = permutations.Nodes.FirstOrDefault();
-                if (firstNode != null && IsGenericTypeName(firstNode.TypeName, out _, out var count, out _))
+                if (firstNode != null)
                 {
-                    typeDef.GenericCount = count;
+                    if (IsGenericTypeName(firstNode.TypeName, out _, out var count, out _))
+                    {
+                        typeDef.GenericCount = count;
+                    }
+                    typeDef.FlowMapping = (firstNode.MetaFlag & (int)MetaFlag.TransferUsingFlowMappingStyle) != 0;
                 }
                 foreach (var node in row.Value.Nodes)
                 {
@@ -141,12 +146,37 @@ namespace ThunderClassGenerator
                     inverseOrderTypes.Add(node.AssosiatedTypeDef);
                 }
             }
+
             foreach (var type in inverseOrderTypes)
             {
                 ProcessTypeFields(type, types, typePermutations);
             }
-            var test = types.Values.Except(inverseOrderTypes);
+
             return types.Values;
+        }
+
+        private static void AssignNodeParents(IEnumerable<UnityClass> classes)
+        {
+            foreach (var @class in classes)
+            {
+                if (@class.ReleaseRootNode != null)
+                {
+                    SetChildrenParent(@class.ReleaseRootNode);
+                }
+                if (@class.EditorRootNode != null)
+                {
+                    SetChildrenParent(@class.EditorRootNode);
+                }
+            }
+
+            static void SetChildrenParent(UnityNode node)
+            {
+                foreach (var cNode in node.SubNodes)
+                {
+                    cNode.Parent = node;
+                    SetChildrenParent(cNode);
+                }
+            }
         }
 
         private void FixNodes(IEnumerable<UnityClass> classes, bool release)
@@ -564,10 +594,10 @@ namespace ThunderClassGenerator
                         GatherPermutations(node.SubNodes[1], typePermutations);
                         break;
                     case "map":
-                        var pairNode = node.SubNodes[0].SubNodes[1];
-                        GatherPermutations(pairNode.SubNodes[0], typePermutations);
-                        GatherPermutations(pairNode.SubNodes[1], typePermutations);
-                        break;
+                    //    var pairNode = node.SubNodes[0].SubNodes[1];
+                    //    GatherPermutations(pairNode.SubNodes[0], typePermutations);
+                    //    GatherPermutations(pairNode.SubNodes[1], typePermutations);
+                    //    break;
                     case "fixed_bitset":
                     case "staticvector":
                     case "vector":
@@ -581,11 +611,10 @@ namespace ThunderClassGenerator
                 node.AssosiatedTypeDef = GetPredefinedTypeDef(node);
                 return;
             }
-            _ = IsGenericTypeName(node.TypeName, out var name, out var genericCount, out _);
+            _ = IsGenericTypeName(node.TypeName, out var name, out _, out _);
 
             var permutations = typePermutations.GetOrAdd((name, node.Version));
             permutations.Nodes.Add(node);
-            permutations.GenericCount = genericCount;
             foreach (var cNode in node.SubNodes)
             {
                 GatherPermutations(cNode, typePermutations);
@@ -614,7 +643,6 @@ namespace ThunderClassGenerator
             var fieldDef = new FieldDef
             {
                 Name = node.Name,
-                MetaFlags = node.MetaFlag,
                 Type = GetTypeUsageDefForNode(node, otherTypeDefs),
             };
 
@@ -628,6 +656,7 @@ namespace ThunderClassGenerator
             var genericDef = new TypeUsageDef
             {
                 Type = typeDef,
+                MetaFlags = node.MetaFlag,
             };
 
             var typeLower = node.TypeName.ToLowerInvariant();
@@ -638,17 +667,18 @@ namespace ThunderClassGenerator
                     genericDef.GenericArgs.Add(GetTypeUsageDefForNode(node.SubNodes[1], otherTypeDefs));
                     break;
                 case "map":
-                    var pairNode = node.SubNodes[0].SubNodes[1];
-                    genericDef.GenericArgs.Add(GetTypeUsageDefForNode(pairNode.SubNodes[0], otherTypeDefs));
-                    genericDef.GenericArgs.Add(GetTypeUsageDefForNode(pairNode.SubNodes[1], otherTypeDefs));
-                    break;
+                //    var pairNode = node.SubNodes[0].SubNodes[1];
+                //    genericDef.GenericArgs.Add(GetTypeUsageDefForNode(pairNode.SubNodes[0], otherTypeDefs));
+                //    genericDef.GenericArgs.Add(GetTypeUsageDefForNode(pairNode.SubNodes[1], otherTypeDefs));
+                //    genericDef.MetaFlags |= node.SubNodes[0].MetaFlag;
+                //    break;
                 case "fixed_bitset":
                 case "staticvector":
                 case "vector":
                 case "set":
                     genericDef.GenericArgs.Add(GetTypeUsageDefForNode(node.SubNodes[0].SubNodes[1], otherTypeDefs));
+                    genericDef.MetaFlags |= node.SubNodes[0].MetaFlag;
                     break;
-                //case "array":
                 case "typelessdata":
                     genericDef.GenericArgs.Add(GetTypeUsageDefForNode(node.SubNodes[1], otherTypeDefs));
                     break;
@@ -707,13 +737,12 @@ namespace ThunderClassGenerator
                 "double" => PredefinedTypeDef.Double,
                 "string" => PredefinedTypeDef.String,
                 "pair" => PredefinedTypeDef.KeyValuePair,
-                "map" => PredefinedTypeDef.Dictionary,
+                "map" => PredefinedTypeDef.List, //PredefinedTypeDef.Dictionary, Apparently map can have values with the same key
                 "fixed_bitset" => PredefinedTypeDef.List,
                 "staticvector" => PredefinedTypeDef.List,
                 "vector" => PredefinedTypeDef.List,
-                "set" => PredefinedTypeDef.HashSet,
+                "set" => PredefinedTypeDef.List, // PredefinedTypeDef.HashSet, If map can have the same key, who knows if set can have same values?
                 "typelessdata" => PredefinedTypeDef.List,
-                //"array" => PredefinedTypeDef.List,
                 _ => null
             };
         }
@@ -722,7 +751,6 @@ namespace ThunderClassGenerator
         private class TypePermutations
         {
             public UnityClass Class { get; set; }
-            public int GenericCount { get; set; }
             public List<UnityNode> Nodes { get; } = new List<UnityNode>();
         }
 

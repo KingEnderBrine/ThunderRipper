@@ -14,8 +14,14 @@ namespace ThunderClassGenerator
         public static string CollectionsGeneric { get; } = "System.Collections.Generic";
         public static string ThunderRipperAttributes { get; } = $"{DefaultNamespace}.Attributes";
         public static string ThunderRipperAssets { get; } = $"{DefaultNamespace}.Assets";
-        public static string IAsset { get; } = "IAsset";
+        public static string ThunderRipperUtilities { get; } = $"{DefaultNamespace}.Utilities";
+        public static string AssetBase { get; } = "AssetBase";
 #warning TODO: improve path discovery
-        public static string SolutionFolder { get; set; } = Path.Combine("..", "..", "..", "..");
+        public static string SolutionFolder { get; } = Path.Combine("..", "..", "..", "..");
+        public static string CreatedWithComment { get; } =
+$@"//------------------------------
+//This class is managed by {nameof(ThunderClassGenerator)}
+//Don't do any modifications in this file by hand
+//------------------------------";
     }
 }

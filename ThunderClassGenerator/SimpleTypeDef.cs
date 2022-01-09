@@ -19,6 +19,7 @@ namespace ThunderClassGenerator
         public bool IsStruct { get; set; }
         public short Version { get; set; }
         public int TypeID { get; set; }
+        public bool FlowMapping { get; set; }
         public Dictionary<string, FieldDef> Fields { get; } = new();
         public bool Done { get; set; }
         public virtual string VersionnedName => $"{Name}_V{Version}";

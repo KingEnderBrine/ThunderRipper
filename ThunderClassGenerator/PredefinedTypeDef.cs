@@ -8,24 +8,24 @@ namespace ThunderClassGenerator
 {
     public class PredefinedTypeDef : SimpleTypeDef
     {
-        public static PredefinedTypeDef String { get; } = new PredefinedTypeDef { Name = "string" };
-        public static PredefinedTypeDef Int { get; } = new PredefinedTypeDef { Name = "int" };
-        public static PredefinedTypeDef Byte { get; } = new PredefinedTypeDef { Name = "byte" };
-        public static PredefinedTypeDef Long { get; } = new PredefinedTypeDef { Name = "long" };
-        public static PredefinedTypeDef Char { get; } = new PredefinedTypeDef { Name = "char" };
-        public static PredefinedTypeDef Float { get; } = new PredefinedTypeDef { Name = "float" };
-        public static PredefinedTypeDef Bool { get; } = new PredefinedTypeDef { Name = "bool" };
-        public static PredefinedTypeDef Double { get; } = new PredefinedTypeDef { Name = "double" };
-        public static PredefinedTypeDef SByte { get; } = new PredefinedTypeDef { Name = "sbyte" };
-        public static PredefinedTypeDef Short { get; } = new PredefinedTypeDef { Name = "short" };
-        public static PredefinedTypeDef UShort { get; } = new PredefinedTypeDef { Name = "ushort" };
-        public static PredefinedTypeDef UInt { get; } = new PredefinedTypeDef { Name = "uint" };
-        public static PredefinedTypeDef ULong { get; } = new PredefinedTypeDef { Name = "ulong" };
-        
+        public static PredefinedTypeDef String { get; } = new PredefinedTypeDef { Namespace = "ThunderRipper.Wrappers", Name = "StringWrapper" };
+        public static PredefinedTypeDef Int { get; } = new PredefinedTypeDef { Namespace = "ThunderRipper.Wrappers", Name = "IntWrapper" };
+        public static PredefinedTypeDef Byte { get; } = new PredefinedTypeDef { Namespace = "ThunderRipper.Wrappers", Name = "ByteWrapper" };
+        public static PredefinedTypeDef Long { get; } = new PredefinedTypeDef { Namespace = "ThunderRipper.Wrappers", Name = "LongWrapper" };
+        public static PredefinedTypeDef Char { get; } = new PredefinedTypeDef { Namespace = "ThunderRipper.Wrappers", Name = "CharWrapper" };
+        public static PredefinedTypeDef Float { get; } = new PredefinedTypeDef { Namespace = "ThunderRipper.Wrappers", Name = "FloatWrapper" };
+        public static PredefinedTypeDef Bool { get; } = new PredefinedTypeDef { Namespace = "ThunderRipper.Wrappers", Name = "BoolWrapper" };
+        public static PredefinedTypeDef Double { get; } = new PredefinedTypeDef { Namespace = "ThunderRipper.Wrappers", Name = "DoubleWrapper" };
+        public static PredefinedTypeDef SByte { get; } = new PredefinedTypeDef { Namespace = "ThunderRipper.Wrappers", Name = "SByteWrapper" };
+        public static PredefinedTypeDef Short { get; } = new PredefinedTypeDef { Namespace = "ThunderRipper.Wrappers", Name = "ShortWrapper" };
+        public static PredefinedTypeDef UShort { get; } = new PredefinedTypeDef { Namespace = "ThunderRipper.Wrappers", Name = "UShortWrapper" };
+        public static PredefinedTypeDef UInt { get; } = new PredefinedTypeDef { Namespace = "ThunderRipper.Wrappers", Name = "UIntWrapper" };
+        public static PredefinedTypeDef ULong { get; } = new PredefinedTypeDef { Namespace = "ThunderRipper.Wrappers", Name = "ULongWrapper" };
+
         public static PredefinedTypeDef KeyValuePair { get; } = new PredefinedTypeDef
         {
-            Namespace = "System.Collections.Generic",
-            Name = "KeyValuePair",
+            Namespace = "ThunderRipper.Wrappers",
+            Name = "KeyValuePairWrapper",
             GenericCount = 2,
             Fields =
             {
@@ -50,8 +50,8 @@ namespace ThunderClassGenerator
 
         public static PredefinedTypeDef Dictionary { get; } = new PredefinedTypeDef
         {
-            Namespace = "System.Collections.Generic",
-            Name = "Dictionary",
+            Namespace = "ThunderRipper.Wrappers",
+            Name = "AssetDictionary",
             GenericCount = 2,
             Fields =
             {
@@ -76,8 +76,8 @@ namespace ThunderClassGenerator
 
         public static PredefinedTypeDef HashSet { get; } = new PredefinedTypeDef
         {
-            Namespace = "System.Collections.Generic",
-            Name = "HashSet",
+            Namespace = "ThunderRipper.Wrappers",
+            Name = "AssetHashSet",
             GenericCount = 1,
             Fields =
             {
@@ -94,8 +94,8 @@ namespace ThunderClassGenerator
 
         public static PredefinedTypeDef List { get; } = new PredefinedTypeDef
         {
-            Namespace = "System.Collections.Generic",
-            Name = "List",
+            Namespace = "ThunderRipper.Wrappers",
+            Name = "AssetList",
             GenericCount = 1,
             Fields =
             {
