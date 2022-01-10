@@ -8,7 +8,7 @@ using System.Threading.Tasks;
 
 namespace ThunderClassGenerator
 {
-    [DebuggerDisplay("{Name} | {TypeName}")]
+    [DebuggerDisplay("{Name} ({TypeName})")]
     public class UnityNode
     {
         public string TypeName { get; set; }
@@ -22,5 +22,39 @@ namespace ThunderClassGenerator
         public List<UnityNode> SubNodes { get; set; }
         public UnityNode Parent { get; set; }
         public SimpleTypeDef AssosiatedTypeDef { get; set; }
+
+        public UnityNode DeepClone()
+        {
+            return new UnityNode
+            {
+                TypeName = TypeName,
+                Name = Name,
+                Level = Level,
+                ByteSize = ByteSize,
+                Index = Index,
+                Version = Version,
+                TypeFlags = TypeFlags,
+                MetaFlag = MetaFlag,
+                SubNodes = SubNodes.Select(el => el.DeepClone()).ToList(),
+                AssosiatedTypeDef = AssosiatedTypeDef,
+            };
+        }
+
+        public UnityNode CloneWithoutSubNodes()
+        {
+            return new UnityNode
+            {
+                TypeName = TypeName,
+                Name = Name,
+                Level = Level,
+                ByteSize = ByteSize,
+                Index = Index,
+                Version = Version,
+                TypeFlags = TypeFlags,
+                MetaFlag = MetaFlag,
+                SubNodes = new List<UnityNode>(),
+                AssosiatedTypeDef = AssosiatedTypeDef,
+            };
+        }
     }
 }

@@ -28,6 +28,7 @@ namespace ThunderClassGenerator.Generators
             var root = SF.CompilationUnit(default, GetUsings(typeDef), default, GetNamespaceMember(typeDef));
             return CSharpSyntaxTree.Create(root, new CSharpParseOptions(GeneratorUtilities.LangVersion), filePath);
         }
+
         private static SyntaxList<MemberDeclarationSyntax> GetNamespaceMember(SimpleTypeDef typeDef)
         {
             var @class = SF.ClassDeclaration(default, GetClassModifiers(typeDef), SF.Identifier(typeDef.VersionnedName), GetTypeParameters(typeDef), default, default, GetMethods(typeDef));
@@ -63,7 +64,6 @@ namespace ThunderClassGenerator.Generators
                 {
                     continue;
                 }
-
                 statements.Add(SF.ExpressionStatement(SF.AssignmentExpression(SyntaxKind.SimpleAssignmentExpression, SF.IdentifierName(GeneratorUtilities.GetValidFieldName(field.Name)), SF.ObjectCreationExpression(SF.ParseName(GeneratorUtilities.GetFullFieldTypeName(field.Type)), SF.ArgumentList(), default))));
                 statements.Add(SF.ExpressionStatement(SF.InvocationExpression(SF.MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression, SF.IdentifierName(GeneratorUtilities.GetValidFieldName(field.Name)), SF.IdentifierName("ReadBinary")), SF.ArgumentList(SF.SeparatedList(new[] { SF.Argument(SF.IdentifierName("reader")) })))));
                 if ((field.Type.MetaFlags & (int)MetaFlag.AlignBytesFlag) != 0)
@@ -124,6 +124,10 @@ namespace ThunderClassGenerator.Generators
 
             foreach (var field in typeDef.Fields.Values)
             {
+                if (field.ExistsInBase)
+                {
+                    continue;
+                }
                 GoOverGenericArgs(field.Type);
 
                 void GoOverGenericArgs(TypeUsageDef usageDef)
@@ -140,7 +144,7 @@ namespace ThunderClassGenerator.Generators
                 }
             }
 
-            return SF.List(usings.Select(el => SF.UsingDirective(SF.IdentifierName(el))));
+            return SF.List(usings.OrderBy(el => el).Select(el => SF.UsingDirective(SF.IdentifierName(el))));
         }
     }
 }

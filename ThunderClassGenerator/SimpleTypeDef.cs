@@ -16,7 +16,6 @@ namespace ThunderClassGenerator
         public SimpleTypeDef BaseType { get; set; }
         public int GenericCount { get; set; }
         public bool IsAbstract { get; set; }
-        public bool IsStruct { get; set; }
         public short Version { get; set; }
         public int TypeID { get; set; }
         public bool FlowMapping { get; set; }

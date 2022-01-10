@@ -26,8 +26,6 @@ namespace ThunderClassGenerator
                 readerTree = readerTree.WithRootAndOptions(readerRoot, readerTree.Options);
                 WriteTree(readerTree);
             }
-
-            File.WriteAllText(@"D:\classes.cs", string.Join(",\n", types.Where(el => el.TypeID != -1).Select(el => $"[{el.TypeID}] = {el.VersionnedName}")));
         }
 
         private static void WriteTree(SyntaxTree tree)

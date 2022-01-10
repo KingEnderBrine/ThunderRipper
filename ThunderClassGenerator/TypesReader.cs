@@ -62,9 +62,9 @@ namespace ThunderClassGenerator
 
         public IEnumerable<SimpleTypeDef> ReadTypes(IEnumerable<UnityClass> classes, bool release = true)
         {
-            AssignNodeParents(classes);
             FixClasses(classes, release);
             FixNodes(classes, release);
+            AssignNodeParents(classes);
 
             var types = new Dictionary<(string, short), SimpleTypeDef>();
             var typePermutations = new Dictionary<(string, short), TypePermutations>();
@@ -83,7 +83,6 @@ namespace ThunderClassGenerator
                 {
                     Base = permutations.Class?.Base ?? string.Empty,
                     IsAbstract = permutations.Class?.IsAbstract ?? false,
-                    IsStruct = permutations.Class == null,
                     Namespace = permutations.Class?.Namespace ?? string.Empty,
                     TypeID = permutations.Class?.TypeID ?? -1,
                     Version = row.Key.Item2,
@@ -216,7 +215,6 @@ namespace ThunderClassGenerator
                 {
                     continue;
                 }
-
                 var correctClass = classes.FirstOrDefault(el => el.Name == node.TypeName);
                 if (release && correctClass.ReleaseRootNode == null)
                 {
@@ -227,6 +225,57 @@ namespace ThunderClassGenerator
                 {
                     correctClass.EditorRootNode = node;
                     @class.EditorRootNode = null;
+                }
+            }
+
+            // Some inherited classes have the same fields, but base type node is empty
+            // Populate base type node with common fields
+            foreach (var @class in classes.Where(el => release ? el.ReleaseRootNode == null : el.EditorRootNode == null))
+            {
+                var derivedClasses = classes.Where(el => @class.Derived.Contains(el.Name) && (release ? el.ReleaseRootNode != null : el.EditorRootNode != null)).Select(el => release ? el.ReleaseRootNode : el.EditorRootNode).ToList();
+                if (!derivedClasses.Any())
+                {
+                    continue;
+                }
+                var first = derivedClasses.FirstOrDefault();
+                var sameFieldsCount = first.SubNodes.Count;
+                foreach (var derivedClass in derivedClasses)
+                {
+                    sameFieldsCount = Math.Min(sameFieldsCount, derivedClass.SubNodes.Count);
+                    for (var i = 0; i < sameFieldsCount; i++)
+                    {
+                        var derivedFieldNode = derivedClass.SubNodes[i];
+                        var firstFieldNode = first.SubNodes[i];
+                        if (derivedFieldNode.Name != firstFieldNode.Name || derivedFieldNode.TypeName != firstFieldNode.TypeName)
+                        {
+                            sameFieldsCount = i;
+                        }
+                    }
+                }
+                var subNodes = new List<UnityNode>();
+                for (var i = 0; i < sameFieldsCount; i++)
+                {
+                    subNodes.Add(first.SubNodes[i].DeepClone());
+                }
+                var rootNode = new UnityNode
+                {
+                    TypeName = @class.Name,
+                    Name = "Base",
+                    Level = 0,
+                    ByteSize = subNodes.Any(el => el.ByteSize == -1) ? -1 : subNodes.Sum(el => el.ByteSize),
+                    Index = 0,
+                    Version = 1,
+                    TypeFlags = first.TypeFlags,
+                    MetaFlag = first.MetaFlag,
+                    SubNodes = subNodes,
+                };
+                if (release)
+                {
+                    @class.ReleaseRootNode = rootNode;
+                }
+                else
+                {
+                    @class.EditorRootNode = rootNode;
                 }
             }
         }
@@ -546,14 +595,13 @@ namespace ThunderClassGenerator
                     var permutations = new TypePermutations();
                     permutations.Nodes.AddRange(nodes);
                     var firstNode = nodes[0];
-                    var typeName = $"{GetParentName(firstNode)}_{firstNode.TypeName}_{firstNode.Name}";
+                    //Assuming such types can't be generic, use hash of field types for unique names
+                    var typeName = $"{firstNode.TypeName}_{(uint)firstNode.SubNodes.Aggregate(0, (total, el) => total * -1521134295 + el.TypeName.GetDeterministicHashCode())}";
                     foreach (var node in nodes)
                     {
                         node.TypeName = typeName;
                     }
                     addPermutations.Add((typeName, firstNode.Version, permutations));
-
-                    static string GetParentName(UnityNode node) => ExistingTypes.Contains(node.Parent.TypeName.ToLowerInvariant()) ? GetParentName(node.Parent) : node.Parent.TypeName;
                 }
             }
             foreach (var row in removePermutations)

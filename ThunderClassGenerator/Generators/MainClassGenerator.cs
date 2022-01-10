@@ -46,6 +46,10 @@ namespace ThunderClassGenerator.Generators
 
             foreach (var field in typeDef.Fields.Values)
             {
+                if (field.ExistsInBase)
+                {
+                    continue;
+                }
                 GoOverGenericArgs(field.Type);
 
                 void GoOverGenericArgs(TypeUsageDef usageDef)
@@ -62,7 +66,7 @@ namespace ThunderClassGenerator.Generators
                 }
             }
 
-            return SF.List(usings.Select(el => SF.UsingDirective(SF.IdentifierName(el))));
+            return SF.List(usings.OrderBy(el => el).Select(el => SF.UsingDirective(SF.IdentifierName(el))));
         }
 
         private static SyntaxList<MemberDeclarationSyntax> GetNamespaceMember(SimpleTypeDef typeDef)
