@@ -642,10 +642,6 @@ namespace ThunderClassGenerator
                         GatherPermutations(node.SubNodes[1], typePermutations);
                         break;
                     case "map":
-                    //    var pairNode = node.SubNodes[0].SubNodes[1];
-                    //    GatherPermutations(pairNode.SubNodes[0], typePermutations);
-                    //    GatherPermutations(pairNode.SubNodes[1], typePermutations);
-                    //    break;
                     case "fixed_bitset":
                     case "staticvector":
                     case "vector":
@@ -715,11 +711,6 @@ namespace ThunderClassGenerator
                     genericDef.GenericArgs.Add(GetTypeUsageDefForNode(node.SubNodes[1], otherTypeDefs));
                     break;
                 case "map":
-                //    var pairNode = node.SubNodes[0].SubNodes[1];
-                //    genericDef.GenericArgs.Add(GetTypeUsageDefForNode(pairNode.SubNodes[0], otherTypeDefs));
-                //    genericDef.GenericArgs.Add(GetTypeUsageDefForNode(pairNode.SubNodes[1], otherTypeDefs));
-                //    genericDef.MetaFlags |= node.SubNodes[0].MetaFlag;
-                //    break;
                 case "fixed_bitset":
                 case "staticvector":
                 case "vector":
@@ -785,11 +776,11 @@ namespace ThunderClassGenerator
                 "double" => PredefinedTypeDef.Double,
                 "string" => PredefinedTypeDef.String,
                 "pair" => PredefinedTypeDef.KeyValuePair,
-                "map" => PredefinedTypeDef.List, //PredefinedTypeDef.Dictionary, Apparently map can have values with the same key
+                "map" => PredefinedTypeDef.List,
                 "fixed_bitset" => PredefinedTypeDef.List,
                 "staticvector" => PredefinedTypeDef.List,
                 "vector" => PredefinedTypeDef.List,
-                "set" => PredefinedTypeDef.List, // PredefinedTypeDef.HashSet, If map can have the same key, who knows if set can have same values?
+                "set" => PredefinedTypeDef.List,
                 "typelessdata" => PredefinedTypeDef.List,
                 _ => null
             };

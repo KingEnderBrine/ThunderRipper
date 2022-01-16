@@ -48,50 +48,6 @@ namespace ThunderClassGenerator
             }
         };
 
-        public static PredefinedTypeDef Dictionary { get; } = new PredefinedTypeDef
-        {
-            Namespace = "ThunderRipper.Wrappers",
-            Name = "AssetDictionary",
-            GenericCount = 2,
-            Fields =
-            {
-                ["first"] = new FieldDef
-                {
-                    Type = new TypeUsageDef
-                    {
-                        GenericIndex = 0,
-                    },
-                    Name = "first",
-                },
-                ["second"] = new FieldDef
-                {
-                    Type = new TypeUsageDef
-                    {
-                        GenericIndex = 1,
-                    },
-                    Name = "second",
-                }
-            }
-        };
-
-        public static PredefinedTypeDef HashSet { get; } = new PredefinedTypeDef
-        {
-            Namespace = "ThunderRipper.Wrappers",
-            Name = "AssetHashSet",
-            GenericCount = 1,
-            Fields =
-            {
-                ["data"] = new FieldDef
-                {
-                    Type = new TypeUsageDef
-                    {
-                        GenericIndex = 0,
-                    },
-                    Name = "data",
-                },
-            }
-        };
-
         public static PredefinedTypeDef List { get; } = new PredefinedTypeDef
         {
             Namespace = "ThunderRipper.Wrappers",
