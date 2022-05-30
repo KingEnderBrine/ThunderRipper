@@ -52,13 +52,25 @@ namespace ThunderRipper.Work
             }
             foreach (var workerPath in Directory.GetFiles(Constants.RelativeWorkersPath, $"{Constants.ThunderRipperWorker}*.dll"))
             {
-                var match = Regex.Match(workerPath, $@"{Constants.ThunderRipperWorker}_(?<from>.*?)_(?<to>.*?)\.dll");
+                var match = Regex.Match(workerPath, $@"{Constants.ThunderRipperWorker}_(?<from>.*?)(_(?<to>.*?))?\.dll");
                 if (match.Success &&
                     UnityVersion.TryParse(match.Groups["from"].Value, out var from) &&
-                    from <= version &&
-                    UnityVersion.TryParse(match.Groups["to"].Value, out var to) &&
-                    version <= to)
+                    from <= version)
                 {
+                    var to = new UnityVersion(version.Major, version.Minor, 999);
+                    if (match.Groups["to"].Success)
+                    {
+                        if (!(UnityVersion.TryParse(match.Groups["to"].Value, out to) && version <= to))
+                        {
+                            continue;
+                        }
+                    }
+                    //If there is no "to" version assume that same minor version will work, it may not but it's something
+                    else if (from.Major != version.Major || from.Minor != version.Minor)
+                    {
+                        continue;
+                    }
+
                     info = new ContextInfo
                     {
                         Context = new AssemblyLoadContext(Path.GetFileName(workerPath), true),

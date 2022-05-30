@@ -10,11 +10,13 @@ namespace ThunderClassGenerator
     public static class Strings
     {
         public static string DefaultNamespace { get; } = "ThunderRipper";
+        public static string SharedNamespace { get; } = "ThunderRipperShared";
         public static string OutputNamespace { get; } = $"{DefaultNamespace}.UnityClasses";
         public static string CollectionsGeneric { get; } = "System.Collections.Generic";
-        public static string ThunderRipperAttributes { get; } = $"{DefaultNamespace}.Attributes";
-        public static string ThunderRipperAssets { get; } = $"{DefaultNamespace}.Assets";
-        public static string ThunderRipperUtilities { get; } = $"{DefaultNamespace}.Utilities";
+        public static string ThunderRipperAttributes { get; } = $"{SharedNamespace}.Attributes";
+        public static string ThunderRipperAssets { get; } = $"{SharedNamespace}.Assets";
+        public static string ThunderRipperUtilities { get; } = $"{SharedNamespace}.Utilities";
+        public static string ThunderRipperWrappers { get; } = $"{SharedNamespace}.Wrappers";
         public static string AssetBase { get; } = "AssetBase";
 #warning TODO: improve path discovery
         public static string SolutionFolder { get; } = Path.Combine("..", "..", "..", "..");

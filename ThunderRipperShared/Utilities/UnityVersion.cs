@@ -38,6 +38,7 @@ namespace ThunderRipperShared.Utilities
         public int Build => build;
         public VersionType Type => (VersionType)type;
         public int TypeNumber => typeNumber;
+        public UnityVersion WithoutType => new UnityVersion(Major, Minor, Build);
 
         private UnityVersion(Match match) : this()
         {
@@ -109,7 +110,7 @@ namespace ThunderRipperShared.Utilities
 
         public override string ToString()
         {
-            return Type == VersionType.Unknown ? $"{major}.{minor}.{build}" : $"{major}.{minor}.{build}{TypeToLiteral(Type)}{typeNumber}";
+            return Type == VersionType.Unknown ? $"{Major}.{Minor}.{Build}" : $"{Major}.{Minor}.{Build}{TypeToLiteral(Type)}{TypeNumber}";
         }
 
         private static string TypeToLiteral(VersionType type)

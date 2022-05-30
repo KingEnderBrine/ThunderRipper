@@ -12,7 +12,7 @@ namespace ThunderClassGenerator
         public static void Main(string[] args)
         {
             var info = JsonSerializer.Deserialize<Info>(File.ReadAllText(Path.Combine(@"D:\", "info.json")));
-            var types = new TypesReader().ReadTypes(info.Classes);
+            var types = new TypesReader().ReadTypes(info.Classes, false);
 
             foreach (var typeDef in types)
             {

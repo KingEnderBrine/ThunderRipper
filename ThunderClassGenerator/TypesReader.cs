@@ -858,18 +858,5 @@ namespace ThunderClassGenerator
                 return HashCode.Combine(obj.Item1.GetHashCode(), obj.Item2.Any() ? obj.Item2.Select(el => el.GetHashCode()).Aggregate((total, el) => total ^ el) : 0);
             }
         }
-
-        private class UnityNodeNameComparer : IEqualityComparer<UnityNode>
-        {
-            public bool Equals(UnityNode x, UnityNode y)
-            {
-                return x.Name == y.Name;
-            }
-
-            public int GetHashCode([DisallowNull] UnityNode obj)
-            {
-                return obj.GetHashCode();
-            }
-        }
     }
 }
