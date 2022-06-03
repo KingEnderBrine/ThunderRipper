@@ -4,5 +4,9 @@
     <TargetFramework>netstandard2.0</TargetFramework>
   </PropertyGroup>
 
-  <Import Project="$(ProjectDir)Defines.targets"/>
+  <Import Project="$(ProjectDir)Defines.targets" />
+
+  <ItemGroup>
+    <ProjectReference Include="..\ThunderRipperShared\ThunderRipperShared.csproj" />
+  </ItemGroup>
 </Project>

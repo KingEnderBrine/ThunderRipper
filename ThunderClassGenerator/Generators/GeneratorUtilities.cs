@@ -184,7 +184,11 @@ namespace ThunderClassGenerator.Generators
                 Strings.ThunderRipperUtilities,
                 Strings.ThunderRipperYAML,
                 Strings.ThunderRipperYAMLExtensions,
+                "System",
+                "System.Linq.Expressions",
+                "System.Linq",
             };
+
 
             if (typeDef.BaseType != null && !string.IsNullOrWhiteSpace(typeDef.BaseType.Namespace) && !typeDef.Namespace.StartsWith(typeDef.BaseType.Namespace))
             {

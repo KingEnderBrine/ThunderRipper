@@ -101,6 +101,16 @@ namespace ThunderClassGenerator.Generators
                 {
                     continue;
                 }
+
+                fields.Add(
+                    SF.FieldDeclaration(
+                        default,
+                        SF.TokenList(SF.Token(SyntaxKind.PrivateKeyword), SF.Token(SyntaxKind.ConstKeyword)),
+                        SF.VariableDeclaration(
+                            SF.ParseTypeName("short"),
+                            SF.SeparatedList(new[] { SF.VariableDeclarator(SF.Identifier("_order_" + GeneratorUtilities.GetValidFieldName(field.Name)), default, SF.EqualsValueClause(SF.LiteralExpression(SyntaxKind.NumericLiteralExpression, SF.Literal(addedFieldCount)))) })))
+                    .WithTrailingTrivia(SF.LineFeed));
+
                 fields.Add(
                     SF.FieldDeclaration(
                         SF.List(GetFieldAttributes(field, addedFieldCount)),
@@ -122,7 +132,7 @@ namespace ThunderClassGenerator.Generators
                 yield return GeneratorUtilities.CreateSimpleAttribute("Align");
             }
 
-            yield return GeneratorUtilities.CreateSimpleAttribute("Order", new[] { SF.AttributeArgument(SF.LiteralExpression(SyntaxKind.NumericLiteralExpression, SF.Literal(order))) });
+            //yield return GeneratorUtilities.CreateSimpleAttribute("Order", new[] { SF.AttributeArgument(SF.LiteralExpression(SyntaxKind.NumericLiteralExpression, SF.Literal(order))) });
             yield return GeneratorUtilities.CreateSimpleAttribute("SerializedName", new[] { SF.AttributeArgument(SF.LiteralExpression(SyntaxKind.StringLiteralExpression, SF.Literal(field.Name))) });
         }
 
