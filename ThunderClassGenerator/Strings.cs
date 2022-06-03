@@ -17,6 +17,9 @@ namespace ThunderClassGenerator
         public static string ThunderRipperAssets { get; } = $"{SharedNamespace}.Assets";
         public static string ThunderRipperUtilities { get; } = $"{SharedNamespace}.Utilities";
         public static string ThunderRipperWrappers { get; } = $"{SharedNamespace}.Wrappers";
+        public static string ThunderRipperYAML { get; } = $"{SharedNamespace}.YAML";
+        public static string ThunderRipperYAMLExtensions { get; } = $"{ThunderRipperYAML}.Extensions";
+        
         public static string AssetBase { get; } = "AssetBase";
 #warning TODO: improve path discovery
         public static string SolutionFolder { get; } = Path.Combine("..", "..", "..", "..");

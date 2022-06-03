@@ -26,47 +26,8 @@ namespace ThunderClassGenerator.Generators
 
         private static SyntaxTree CreateSyntaxTree(SimpleTypeDef typeDef, string filePath)
         {
-            var root = SF.CompilationUnit(default, GetUsings(typeDef), default, GetNamespaceMember(typeDef));
+            var root = SF.CompilationUnit(default, GeneratorUtilities.GetUsings(typeDef), default, GetNamespaceMember(typeDef));
             return CSharpSyntaxTree.Create(root, new CSharpParseOptions(GeneratorUtilities.LangVersion), filePath);
-        }
-
-        private static SyntaxList<UsingDirectiveSyntax> GetUsings(SimpleTypeDef typeDef)
-        {
-            var usings = new HashSet<string>
-            {
-                Strings.CollectionsGeneric,
-                Strings.ThunderRipperAttributes,
-                Strings.ThunderRipperAssets,
-            };
-
-            if (typeDef.BaseType != null && !string.IsNullOrWhiteSpace(typeDef.BaseType.Namespace) && !typeDef.Namespace.StartsWith(typeDef.BaseType.Namespace))
-            {
-                usings.Add(GeneratorUtilities.GetNamespaceString(typeDef.BaseType));
-            }
-
-            foreach (var field in typeDef.Fields.Values)
-            {
-                if (field.ExistsInBase)
-                {
-                    continue;
-                }
-                GoOverGenericArgs(field.Type);
-
-                void GoOverGenericArgs(TypeUsageDef usageDef)
-                {
-                    if (usageDef.GenericIndex != -1)
-                    {
-                        return;
-                    }
-                    usings.Add(GeneratorUtilities.GetNamespaceString(usageDef.Type));
-                    foreach (var genericArg in usageDef.GenericArgs)
-                    {
-                        GoOverGenericArgs(genericArg);
-                    }
-                }
-            }
-
-            return SF.List(usings.OrderBy(el => el).Select(el => SF.UsingDirective(SF.IdentifierName(el))));
         }
 
         private static SyntaxList<MemberDeclarationSyntax> GetNamespaceMember(SimpleTypeDef typeDef)
@@ -84,7 +45,7 @@ namespace ThunderClassGenerator.Generators
             {
                 for (var i = 0; i < typeDef.GenericCount; i++)
                 {
-                    constraints.Add(SF.TypeParameterConstraintClause(SF.IdentifierName($"T{i + 1}"), SF.SeparatedList(new TypeParameterConstraintSyntax[] { SF.TypeConstraint(SF.ParseTypeName("IBinaryReadable")), SF.ConstructorConstraint() })));
+                    constraints.Add(SF.TypeParameterConstraintClause(SF.IdentifierName($"T{i + 1}"), SF.SeparatedList(new TypeParameterConstraintSyntax[] { SF.TypeConstraint(SF.ParseTypeName("IBinaryReadable")), SF.TypeConstraint(SF.ParseTypeName("IYAMLExportable")), SF.ConstructorConstraint() })));
                 }
             }
 
@@ -116,6 +77,19 @@ namespace ThunderClassGenerator.Generators
                         SF.Identifier("Version"),
                         default,
                         SF.ArrowExpressionClause(SF.LiteralExpression(SyntaxKind.NumericLiteralExpression, SF.Literal(typeDef.Version))),
+                        default)
+                    .WithSemicolonToken(SF.Token(SyntaxKind.SemicolonToken))
+                    .WithTrailingTrivia(SF.LineFeed));
+
+            fields.Add(
+                    SF.PropertyDeclaration(
+                        default,
+                        SF.TokenList(SF.Token(SyntaxKind.PublicKeyword), SF.Token(SyntaxKind.OverrideKeyword)),
+                        SF.ParseTypeName("MappingStyle"),
+                        default,
+                        SF.Identifier("MappingStyle"),
+                        default,
+                        SF.ArrowExpressionClause(SF.MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression, SF.ParseTypeName("MappingStyle"), SF.IdentifierName(typeDef.FlowMapping ? "Flow" : "Block"))),
                         default)
                     .WithSemicolonToken(SF.Token(SyntaxKind.SemicolonToken))
                     .WithTrailingTrivia(SF.LineFeed));

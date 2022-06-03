@@ -134,5 +134,86 @@ namespace ThunderClassGenerator.Generators
                             SF.AttributeArgumentList(SF.SeparatedList(args)))
                 }));
         }
+
+        public static SyntaxList<MemberDeclarationSyntax> GetNamespaceMember(SimpleTypeDef typeDef, SyntaxList<MemberDeclarationSyntax> methods)
+        {
+            var @class = SF.ClassDeclaration(default, GetClassModifiers(typeDef), SF.Identifier(typeDef.VersionnedName), GetTypeParameters(typeDef), default, default, methods);
+            var @namespace = SF.NamespaceDeclaration(SF.IdentifierName(GetNamespaceString(typeDef)), default, default, SF.List(new MemberDeclarationSyntax[] { @class }));
+            var comment = SF.Comment(Strings.CreatedWithComment);
+            return SF.List(new MemberDeclarationSyntax[] { @namespace.WithLeadingTrivia(comment) });
+        }
+
+        public static SyntaxTokenList GetClassModifiers(SimpleTypeDef typeDef)
+        {
+            return SF.TokenList(GetTokens());
+
+            IEnumerable<SyntaxToken> GetTokens()
+            {
+                yield return SF.Token(SyntaxKind.PublicKeyword);
+                if (typeDef.IsAbstract)
+                {
+                    yield return SF.Token(SyntaxKind.AbstractKeyword);
+                }
+                //Partial must always be right before class
+                yield return SF.Token(SyntaxKind.PartialKeyword);
+            }
+        }
+
+        public static TypeParameterListSyntax GetTypeParameters(SimpleTypeDef typeDef)
+        {
+            if (typeDef.GenericCount == 0)
+            {
+                return default;
+            }
+
+            var types = new List<TypeParameterSyntax>();
+            for (var i = 0; i < typeDef.GenericCount; i++)
+            {
+                types.Add(SF.TypeParameter($"T{i + 1}"));
+            }
+
+            return SF.TypeParameterList(SF.SeparatedList(types));
+        }
+        public static SyntaxList<UsingDirectiveSyntax> GetUsings(SimpleTypeDef typeDef)
+        {
+            var usings = new HashSet<string>
+            {
+                Strings.CollectionsGeneric,
+                Strings.ThunderRipperAttributes,
+                Strings.ThunderRipperAssets,
+                Strings.ThunderRipperUtilities,
+                Strings.ThunderRipperYAML,
+                Strings.ThunderRipperYAMLExtensions,
+            };
+
+            if (typeDef.BaseType != null && !string.IsNullOrWhiteSpace(typeDef.BaseType.Namespace) && !typeDef.Namespace.StartsWith(typeDef.BaseType.Namespace))
+            {
+                usings.Add(GetNamespaceString(typeDef.BaseType));
+            }
+
+            foreach (var field in typeDef.Fields.Values)
+            {
+                if (field.ExistsInBase)
+                {
+                    continue;
+                }
+                GoOverGenericArgs(field.Type);
+
+                void GoOverGenericArgs(TypeUsageDef usageDef)
+                {
+                    if (usageDef.GenericIndex != -1)
+                    {
+                        return;
+                    }
+                    usings.Add(GetNamespaceString(usageDef.Type));
+                    foreach (var genericArg in usageDef.GenericArgs)
+                    {
+                        GoOverGenericArgs(genericArg);
+                    }
+                }
+            }
+
+            return SF.List(usings.OrderBy(el => el).Select(el => SF.UsingDirective(SF.IdentifierName(el))));
+        }
     }
 }
