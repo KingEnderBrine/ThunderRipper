@@ -9,7 +9,7 @@ namespace ThunderClassGenerator
 {
     public static class Strings
     {
-        public static string DefaultNamespace { get; } = "ThunderRipper";
+        public static string DefaultNamespace { get; } = "ThunderRipperWorker";
         public static string SharedNamespace { get; } = "ThunderRipperShared";
         public static string OutputNamespace { get; } = $"{DefaultNamespace}.UnityClasses";
         public static string CollectionsGeneric { get; } = "System.Collections.Generic";

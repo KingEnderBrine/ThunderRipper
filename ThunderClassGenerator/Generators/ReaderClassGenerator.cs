@@ -50,16 +50,16 @@ namespace ThunderClassGenerator.Generators
             //Calling base.ReadBinary()
             statements.Add(SF.ExpressionStatement(SF.InvocationExpression(SF.MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression, SF.BaseExpression(), SF.IdentifierName("ReadBinary")), SF.ArgumentList(SF.SeparatedList(new[] { SF.Argument(SF.IdentifierName("reader"))})))));
             
-            foreach (var field in typeDef.Fields.Values)
+            foreach (var field in typeDef.Fields)
             {
                 if (field.ExistsInBase)
                 {
                     continue;
                 }
-                statements.Add(SF.ExpressionStatement(SF.AssignmentExpression(SyntaxKind.SimpleAssignmentExpression, SF.MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression, SF.ThisExpression(), SF.IdentifierName(GeneratorUtilities.GetValidFieldName(field.Name))), SF.ImplicitObjectCreationExpression())));
+                statements.Add(SF.ExpressionStatement(SF.AssignmentExpression(SyntaxKind.SimpleAssignmentExpression, SF.MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression, SF.ThisExpression(), SF.IdentifierName(GeneratorUtilities.GetValidFieldName(field.Name))), SF.ObjectCreationExpression(SF.ParseName(GeneratorUtilities.GetFullFieldTypeName(field.Type)), SF.ArgumentList(), default))));
             }
 
-            foreach (var field in typeDef.Fields.Values)
+            foreach (var field in typeDef.Fields)
             {
                 if (field.ExistsInBase)
                 {
@@ -76,4 +76,36 @@ namespace ThunderClassGenerator.Generators
             return SF.Block(SF.List(statements));
         }
     }
+    /*public bool IsSupported_data(UnityVersion version, int assetVersion)
+        {
+            if (version > new UnityVersion(2000, 0, 0) && assetVersion == 1)
+            {
+                return true;
+            }
+            return false;
+        }
+
+        public int GetOrder_data(UnityVersion version, int assetVersion)
+        {
+            if (version > new UnityVersion(2000, 0, 0) && assetVersion == 1)
+            {
+                return 0;
+            }
+            return -1;
+        }
+
+        public int GetVersion_data(UnityVersion version, int assetVersion)
+        {
+            if (version > new UnityVersion(2000, 0, 0) && assetVersion == 1)
+            {
+                return 2;
+            }
+            return 1;
+        }
+
+        public void ReadBinary_data(SerializedReader reader, UnityVersion version, int assetVersion)
+        {
+            data = new AssetList<UIntWrapper>();
+            data.ReadBinary(reader, version, GetVersion_data(version, assetVersion));
+        }*/
 }

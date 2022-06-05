@@ -49,7 +49,7 @@ namespace ThunderClassGenerator.Generators
             //Calling var node = base.ExportYAML()
             statements.Add(SF.LocalDeclarationStatement(SF.VariableDeclaration(SF.ParseTypeName("var"), SF.SeparatedList(new[] { SF.VariableDeclarator(SF.Identifier("node"), default, SF.EqualsValueClause(SF.BinaryExpression(SyntaxKind.AsExpression, SF.InvocationExpression(SF.MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression, SF.BaseExpression(), SF.IdentifierName("ExportYAML"))), SF.ParseTypeName("YAMLMappingNode")))) }))));
             
-            foreach (var field in typeDef.Fields.Values)
+            foreach (var field in typeDef.Fields)
             {
                 if (field.ExistsInBase)
                 {

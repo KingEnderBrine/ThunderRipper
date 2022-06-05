@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 
 namespace ThunderClassGenerator
 {
-    [DebuggerDisplay("{VersionnedName} Generic={IsGeneric}")]
+    [DebuggerDisplay("{VersionnedName} Component={IsComponent} Generic={IsGeneric}")]
     public class SimpleTypeDef
     {
         public string Name { get; set; }
@@ -17,12 +17,13 @@ namespace ThunderClassGenerator
         public int GenericCount { get; set; }
         public bool IsAbstract { get; set; }
         public short Version { get; set; }
-        public int TypeID { get; set; }
+        public int TypeID { get; set; } = -1;
         public bool FlowMapping { get; set; }
-        public Dictionary<string, FieldDef> Fields { get; } = new();
+        public List<FieldDef> Fields { get; } = new();
         public bool Done { get; set; }
         public virtual string VersionnedName => $"{Name}_V{Version}";
         public bool IsGeneric => GenericCount > 0;
+        public bool IsComponent => TypeID != -1;
         public List<List<(string, List<byte>)>> GenericNodesPaths { get; } = new();
     }
 }

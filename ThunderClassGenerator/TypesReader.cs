@@ -16,6 +16,7 @@ namespace ThunderClassGenerator
         //e.g. Test<T1, T2<T4>, T3<T5, T6>> would result in 3 first level generics
         //https://docs.microsoft.com/en-us/dotnet/standard/base-types/grouping-constructs-in-regular-expressions#balancing-group-definitions
         private static Regex GenericPattern { get; } = new("^(?'name'[^<>]+?)<(?'firstLevel'([^<>]+(((?'Open'<)[^<>]+)+((?'Close-Open'>))+)*(?(Open)(?!))),?)+>$", RegexOptions.Compiled);
+        private static Regex ArrayAccessPattern { get; } = new("^(?'name'.+?)\\[(?'index'\\d+?)\\]$", RegexOptions.Compiled);
         private static string[] ExistingTypes { get; } = new[]
         {
             "bool",
@@ -66,8 +67,8 @@ namespace ThunderClassGenerator
             FixNodes(classes, release);
             AssignNodeParents(classes);
 
-            var types = new Dictionary<(string, short), SimpleTypeDef>();
-            var typePermutations = new Dictionary<(string, short), TypePermutations>();
+            var types = new Dictionary<(string, short, bool), SimpleTypeDef>();
+            var typePermutations = new Dictionary<(string, short, bool), TypePermutations>();
             foreach (var @class in classes)
             {
                 GatherPermutations(@class, release, typePermutations);
@@ -97,7 +98,7 @@ namespace ThunderClassGenerator
                     }
                     typeDef.FlowMapping = (firstNode.MetaFlag & (int)MetaFlag.TransferUsingFlowMappingStyle) != 0;
                 }
-                foreach (var node in row.Value.Nodes)
+                foreach (var node in permutations.Nodes)
                 {
                     node.AssosiatedTypeDef = typeDef;
                 }
@@ -140,7 +141,7 @@ namespace ThunderClassGenerator
                 {
                     GatherTypesFromNodeRecursive(cNode);
                 }
-                if (node.AssosiatedTypeDef != null && node.AssosiatedTypeDef is not PredefinedTypeDef)
+                if (node.AssosiatedTypeDef is not PredefinedTypeDef)
                 {
                     inverseOrderTypes.Add(node.AssosiatedTypeDef);
                 }
@@ -193,13 +194,25 @@ namespace ThunderClassGenerator
 
         private void FixNode(UnityNode node)
         {
-            if (node.TypeName == "string" && node.SubNodes.FirstOrDefault()?.TypeName == "int")
+            if (node.TypeName == "string")
             {
-                node.TypeName = "int";
-                node.MetaFlag = node.SubNodes.FirstOrDefault().MetaFlag;
-                node.SubNodes.Clear();
-                return;
+                //Up to Unity 2018.4.24f1 in release PlayableDirector.ExposedReferenceTable.m_References has special string that is actually int
+                if (node.SubNodes.FirstOrDefault()?.TypeName == "int")
+                {
+                    node.TypeName = "int";
+                    node.MetaFlag = node.SubNodes.FirstOrDefault().MetaFlag;
+                    node.SubNodes.Clear();
+                    return;
+                }
+                //Starting from Unity 2018.4.25f1 in release PlayableDirector.ExposedReferenceTable.m_References has special string that is a string^2
+                if (node.SubNodes.FirstOrDefault()?.TypeName == "string")
+                {
+                    node.MetaFlag = node.SubNodes.FirstOrDefault().MetaFlag;
+                    node.SubNodes = node.SubNodes.FirstOrDefault().SubNodes;
+                    return;
+                }
             }
+
             foreach (var cNode in node.SubNodes)
             {
                 FixNode(cNode);
@@ -208,6 +221,7 @@ namespace ThunderClassGenerator
 
         private void FixClasses(IEnumerable<UnityClass> classes, bool release)
         {
+            var comparer = new ListComparer<UnityNode> { ItemHashFunc = el => HashCode.Combine(el.Name) };
             foreach (var @class in classes)
             {
                 var node = release ? @class.ReleaseRootNode : @class.EditorRootNode;
@@ -215,16 +229,36 @@ namespace ThunderClassGenerator
                 {
                     continue;
                 }
+
+                //Unity 3.5.0f5 - class "EditorUserSettings" nodes have misspelled type name "EditorUSerSettings"
+                if (node.TypeName.ToLowerInvariant() == @class.Name.ToLowerInvariant())
+                {
+                    node.TypeName = @class.Name;
+                    continue;
+                }
+
                 var correctClass = classes.FirstOrDefault(el => el.Name == node.TypeName);
                 if (release && correctClass.ReleaseRootNode == null)
                 {
                     correctClass.ReleaseRootNode = node;
                     @class.ReleaseRootNode = null;
                 }
-                else
+                else if (!release && correctClass.EditorRootNode == null)
                 {
                     correctClass.EditorRootNode = node;
                     @class.EditorRootNode = null;
+                }
+                //Unity 2020.2.0a10 - "ScriptableCamera" root node has type "Camera" even though it has extra fields compared to base type "Camera"
+                else if (node.TypeName == @class.Base)
+                {
+                    if (release && @class.ReleaseRootNode != null && !comparer.Equals(@class.ReleaseRootNode.SubNodes, correctClass.ReleaseRootNode.SubNodes))
+                    {
+                        node.TypeName = @class.Name;
+                    }
+                    else if (!release && @class.EditorRootNode != null && !comparer.Equals(@class.EditorRootNode.SubNodes, correctClass.EditorRootNode.SubNodes))
+                    {
+                        node.TypeName = @class.Name;
+                    }
                 }
             }
 
@@ -280,14 +314,14 @@ namespace ThunderClassGenerator
             }
         }
 
-        private void ProcessTypeFields(SimpleTypeDef type, Dictionary<(string, short), SimpleTypeDef> types, Dictionary<(string, short), TypePermutations> typePermutations)
+        private void ProcessTypeFields(SimpleTypeDef type, Dictionary<(string, short, bool), SimpleTypeDef> types, Dictionary<(string, short, bool), TypePermutations> typePermutations)
         {
             if (type.Done)
             {
                 return;
             }
 
-            var permutations = typePermutations[(type.Name, type.Version)];
+            var permutations = typePermutations[(type.Name, type.Version, type.IsComponent)];
             var firstNode = permutations.Nodes.FirstOrDefault();
             if (firstNode == null)
             {
@@ -302,7 +336,7 @@ namespace ThunderClassGenerator
             foreach (var fieldNode in firstNode.SubNodes)
             {
                 var fieldDef = GetFieldDefForNode(fieldNode, types);
-                type.Fields.Add(fieldDef.Name, fieldDef);
+                type.Fields.Add(fieldDef);
             }
 
             if (genericFieldPaths.Count > 0)
@@ -357,7 +391,7 @@ namespace ThunderClassGenerator
                     var group = finalGroups[i];
                     foreach (var pathRow in group)
                     {
-                        var usage = TraverseFieldDef(type.Fields[pathRow.Item1], pathRow.Item2);
+                        var usage = TraverseFieldDef(type.Fields.First(f => f.Name == pathRow.Item1), pathRow.Item2);
                         usage.Type = null;
                         usage.GenericArgs.Clear();
                         usage.GenericIndex = i;
@@ -368,20 +402,71 @@ namespace ThunderClassGenerator
                 type.GenericCount = finalGroups.Count;
             }
 
-            foreach (var fieldRow in type.Fields)
+            var currentIndex = -1;
+            string currentName = null;
+            for (var i = 0; i < type.Fields.Count; i++)
             {
-                if (FieldExistsInParent(fieldRow.Key, type))
+                var match = ArrayAccessPattern.Match(type.Fields[i].Name);
+                if (!match.Success)
                 {
-                    fieldRow.Value.ExistsInBase = true;
+                    ResetCurrent(i);
+                    continue;
+                }
+                if (currentName != null && currentName != match.Groups["name"].Value)
+                {
+                    ResetCurrent(i);
+                }
+                if (int.Parse(match.Groups["index"].Value) != currentIndex + 1)
+                {
+                    ResetCurrent(i);
+                    continue;
+                }
+
+                currentName = match.Groups["name"].Value;
+                currentIndex++;
+            }
+            ResetCurrent(type.Fields.Count - 1);
+
+            void ResetCurrent(int endIndex)
+            {
+                if (currentIndex != -1)
+                {
+                    var removeIndex = endIndex - currentIndex + 1;
+                    var field = type.Fields[removeIndex - 1];
+                    field.Name = currentName;
+                    field.Type = new TypeUsageDef
+                    {
+                        GenericArgs = { new TypeUsageDef { Type = field.Type.Type } },
+                        Type = PredefinedTypeDef.List,
+                    };
+                    field.FixedLength = currentIndex + 1;
+
+                    for (; currentIndex > 0; currentIndex--)
+                    {
+                        type.Fields.RemoveAt(removeIndex);
+                    }
+
+                    currentName = null;
+                    currentIndex = -1;
                 }
             }
+
+            foreach (var field in type.Fields)
+            {
+                if (FieldExistsInParent(field.Name, type))
+                {
+                    field.ExistsInBase = true;
+                }
+            }
+
+
             bool FieldExistsInParent(string fieldName, SimpleTypeDef type)
             {
                 if (type.BaseType == null)
                 {
                     return false;
                 }
-                if (type.BaseType.Fields.ContainsKey(fieldName))
+                if (type.BaseType.Fields.Any(f => f.Name == fieldName))
                 {
                     return true;
                 }
@@ -472,7 +557,7 @@ namespace ThunderClassGenerator
             return ReorderAndRemoveIncludedPaths(genericFieldPaths, firstNode, groupItemComparer);
         }
 
-        private List<(string, List<byte>)> CalculateGenericFieldPaths(TypePermutations permutations, Dictionary<(string, short), SimpleTypeDef> types)
+        private List<(string, List<byte>)> CalculateGenericFieldPaths(TypePermutations permutations, Dictionary<(string, short, bool), SimpleTypeDef> types)
         {
             var firstNode = permutations.Nodes.FirstOrDefault();
             if (firstNode == null)
@@ -567,11 +652,11 @@ namespace ThunderClassGenerator
         /// Split these to separate permutations
         /// </summary>
         /// <param name="typePermutations"></param>
-        private void FixPermutations(Dictionary<(string, short), TypePermutations> typePermutations)
+        private void FixPermutations(Dictionary<(string, short, bool), TypePermutations> typePermutations)
         {
             var comparer = new ListComparer<UnityNode> { ItemHashFunc = el => HashCode.Combine(el.Name) };
-            var removePermutations = new List<(string, short)>();
-            var addPermutations = new List<(string, short, TypePermutations)>();
+            var removePermutations = new List<(string, short, bool)>();
+            var addPermutations = new List<(string, short, bool, TypePermutations)>();
             foreach (var row in typePermutations)
             {
                 var permutation = row.Value;
@@ -596,12 +681,12 @@ namespace ThunderClassGenerator
                     permutations.Nodes.AddRange(nodes);
                     var firstNode = nodes[0];
                     //Assuming such types can't be generic, use hash of field types for unique names
-                    var typeName = $"{firstNode.TypeName}_{(uint)firstNode.SubNodes.Aggregate(0, (total, el) => total * -1521134295 + el.TypeName.GetDeterministicHashCode())}";
+                    var typeName = $"{firstNode.TypeName}_{(uint)firstNode.SubNodes.Aggregate(0, (total, el) => total * -1521134295 + el.TypeName.GetDeterministicHashCode() + el.Name.GetDeterministicHashCode())}";
                     foreach (var node in nodes)
                     {
                         node.TypeName = typeName;
                     }
-                    addPermutations.Add((typeName, firstNode.Version, permutations));
+                    addPermutations.Add((typeName, firstNode.Version, false, permutations));
                 }
             }
             foreach (var row in removePermutations)
@@ -610,27 +695,27 @@ namespace ThunderClassGenerator
             }
             foreach (var row in addPermutations)
             {
-                typePermutations[(row.Item1, row.Item2)] = row.Item3;
+                typePermutations[(row.Item1, row.Item2, row.Item3)] = row.Item4;
             }
         }
 
-        private void GatherPermutations(UnityClass @class, bool release, Dictionary<(string, short), TypePermutations> typePermutations)
+        private void GatherPermutations(UnityClass @class, bool release, Dictionary<(string, short, bool), TypePermutations> typePermutations)
         {
             var node = release ? @class.ReleaseRootNode : @class.EditorRootNode;
             if (ExistingTypes.Contains(@class.Name.ToLowerInvariant()))
             {
                 return;
             }
-            var permutations = typePermutations.GetOrAdd((@class.Name, node?.Version ?? 1));
+            var permutations = typePermutations.GetOrAdd((@class.Name, node?.Version ?? 1, true));
             permutations.Class = @class;
             if (node == null)
             {
                 return;
             }
-            GatherPermutations(node, typePermutations);
+            GatherPermutations(node, typePermutations, true);
         }
 
-        private void GatherPermutations(UnityNode node, Dictionary<(string, short), TypePermutations> typePermutations)
+        private void GatherPermutations(UnityNode node, Dictionary<(string, short, bool), TypePermutations> typePermutations, bool isComponent = false)
         {
             var typeLower = node.TypeName.ToLowerInvariant();
             if (ExistingTypes.Contains(typeLower))
@@ -646,10 +731,18 @@ namespace ThunderClassGenerator
                     case "staticvector":
                     case "vector":
                     case "set":
+                        node.SubNodes[0].AssosiatedTypeDef = GetPredefinedTypeDef(node.SubNodes[0]);
+                        node.SubNodes[0].SubNodes[0].AssosiatedTypeDef = GetPredefinedTypeDef(node.SubNodes[0].SubNodes[0]);
                         GatherPermutations(node.SubNodes[0].SubNodes[1], typePermutations);
                         break;
                     case "typelessdata":
+                        node.SubNodes[0].AssosiatedTypeDef = GetPredefinedTypeDef(node.SubNodes[0]);
                         GatherPermutations(node.SubNodes[1], typePermutations);
+                        break;
+                    case "string":
+                        node.SubNodes[0].AssosiatedTypeDef = GetPredefinedTypeDef(node.SubNodes[0]);
+                        node.SubNodes[0].SubNodes[0].AssosiatedTypeDef = GetPredefinedTypeDef(node.SubNodes[0].SubNodes[0]);
+                        node.SubNodes[0].SubNodes[1].AssosiatedTypeDef = GetPredefinedTypeDef(node.SubNodes[0].SubNodes[1]);
                         break;
                 }
                 node.AssosiatedTypeDef = GetPredefinedTypeDef(node);
@@ -657,7 +750,7 @@ namespace ThunderClassGenerator
             }
             _ = IsGenericTypeName(node.TypeName, out var name, out _, out _);
 
-            var permutations = typePermutations.GetOrAdd((name, node.Version));
+            var permutations = typePermutations.GetOrAdd((name, node.Version, isComponent));
             permutations.Nodes.Add(node);
             foreach (var cNode in node.SubNodes)
             {
@@ -682,7 +775,7 @@ namespace ThunderClassGenerator
             return true;
         }
 
-        public static FieldDef GetFieldDefForNode(UnityNode node, Dictionary<(string, short), SimpleTypeDef> otherTypeDefs)
+        public static FieldDef GetFieldDefForNode(UnityNode node, Dictionary<(string, short, bool), SimpleTypeDef> otherTypeDefs)
         {
             var fieldDef = new FieldDef
             {
@@ -693,9 +786,9 @@ namespace ThunderClassGenerator
             return fieldDef;
         }
 
-        private static TypeUsageDef GetTypeUsageDefForNode(UnityNode node, Dictionary<(string, short), SimpleTypeDef> otherTypeDefs)
+        private static TypeUsageDef GetTypeUsageDefForNode(UnityNode node, Dictionary<(string, short, bool), SimpleTypeDef> otherTypeDefs)
         {
-            var typeDef = GetPredefinedTypeDef(node) ?? otherTypeDefs[(node.AssosiatedTypeDef.Name, node.Version)];
+            var typeDef = GetPredefinedTypeDef(node) ?? otherTypeDefs[(node.AssosiatedTypeDef.Name, node.Version, false)];
 
             var genericDef = new TypeUsageDef
             {
@@ -722,9 +815,10 @@ namespace ThunderClassGenerator
                     genericDef.GenericArgs.Add(GetTypeUsageDefForNode(node.SubNodes[1], otherTypeDefs));
                     break;
                 default:
-                    if (IsGenericTypeName(node.TypeName, out _, out _, out var args))
+                    if (IsGenericTypeName(node.TypeName, out var nameWithoutGeneric, out _, out var args))
                     {
-                        genericDef.GenericArgs.AddRange(args.Select(el => new TypeUsageDef { Type = otherTypeDefs.FirstOrDefault(e => e.Key.Item1 == el).Value }));
+                        var isComponent = nameWithoutGeneric == "PPtr";
+                        genericDef.GenericArgs.AddRange(args.Select(el => new TypeUsageDef { Type = otherTypeDefs.FirstOrDefault(e => e.Key.Item1 == el && e.Key.Item3 == isComponent).Value }));
                     }
                     else if (typeDef.IsGeneric)
                     {
@@ -782,10 +876,10 @@ namespace ThunderClassGenerator
                 "vector" => PredefinedTypeDef.List,
                 "set" => PredefinedTypeDef.List,
                 "typelessdata" => PredefinedTypeDef.List,
+                "array" => PredefinedTypeDef.List,
                 _ => null
             };
         }
-
 
         private class TypePermutations
         {

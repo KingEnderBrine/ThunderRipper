@@ -29,7 +29,7 @@ namespace ThunderClassGenerator
             GenericCount = 2,
             Fields =
             {
-                ["first"] = new FieldDef
+                new FieldDef
                 {
                     Type = new TypeUsageDef
                     {
@@ -37,7 +37,7 @@ namespace ThunderClassGenerator
                     },
                     Name = "first",
                 },
-                ["second"] = new FieldDef
+                new FieldDef
                 {
                     Type = new TypeUsageDef
                     {
@@ -55,7 +55,7 @@ namespace ThunderClassGenerator
             GenericCount = 1,
             Fields =
             {
-                ["data"] = new FieldDef
+                new FieldDef
                 {
                     Type = new TypeUsageDef
                     {

@@ -95,7 +95,7 @@ namespace ThunderClassGenerator.Generators
                     .WithTrailingTrivia(SF.LineFeed));
 
             var addedFieldCount = 0;
-            foreach (var field in typeDef.Fields.Values)
+            foreach (var field in typeDef.Fields)
             {
                 if (field.ExistsInBase)
                 {

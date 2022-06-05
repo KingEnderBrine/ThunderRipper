@@ -191,7 +191,7 @@ namespace ThunderClassGenerator.Generators
                 usings.Add(GetNamespaceString(typeDef.BaseType));
             }
 
-            foreach (var field in typeDef.Fields.Values)
+            foreach (var field in typeDef.Fields)
             {
                 if (field.ExistsInBase)
                 {

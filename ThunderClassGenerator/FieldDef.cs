@@ -11,5 +11,6 @@ namespace ThunderClassGenerator
         public string Name { get; set; }
         public TypeUsageDef Type { get; set; }
         public bool ExistsInBase { get; set; }
+        public int FixedLength { get; set; } = -1;
     }
 }
