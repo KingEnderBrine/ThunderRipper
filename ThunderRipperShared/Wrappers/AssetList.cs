@@ -11,10 +11,11 @@ namespace ThunderRipperShared.Wrappers
         List<T>, IBinaryReadable, IYAMLExportable
         where T : IBinaryReadable, IYAMLExportable, new()
     {
-        public void ReadBinary(SerializedReader reader)
+        public void ReadBinary(SerializedReader reader) => ReadBinary(reader, reader.ReadInt32());
+
+        public void ReadBinary(SerializedReader reader, int count)
         {
             Clear();
-            var count = reader.ReadInt32();
             Capacity = count;
             for (var i = 0; i < count; i++)
             {
