@@ -109,20 +109,6 @@ namespace ThunderClassGenerator.Generators
             return string.IsNullOrWhiteSpace(typeDef.Namespace) ? Strings.OutputNamespace : typeDef is PredefinedTypeDef ? typeDef.Namespace : $"{Strings.OutputNamespace}.{typeDef.Namespace}";
         }
 
-        public static string GetFullFieldTypeName(TypeUsageDef usageDef)
-        {
-            if (usageDef.GenericIndex != -1)
-            {
-                return $"T{usageDef.GenericIndex + 1}";
-            }
-            if (usageDef.Type.GenericCount == 0)
-            {
-                return usageDef.Type.VersionnedName;
-            }
-
-            return $"{usageDef.Type.VersionnedName}<{string.Join(", ", usageDef.GenericArgs.Select(el => GetFullFieldTypeName(el)))}>";
-        }
-
         public static AttributeListSyntax CreateSimpleAttribute(string name, IEnumerable<AttributeArgumentSyntax> args = null)
         {
             args ??= Array.Empty<AttributeArgumentSyntax>();

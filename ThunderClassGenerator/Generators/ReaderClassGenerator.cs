@@ -56,7 +56,7 @@ namespace ThunderClassGenerator.Generators
                 {
                     continue;
                 }
-                statements.Add(SF.ExpressionStatement(SF.AssignmentExpression(SyntaxKind.SimpleAssignmentExpression, SF.MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression, SF.ThisExpression(), SF.IdentifierName(GeneratorUtilities.GetValidFieldName(field.Name))), SF.ObjectCreationExpression(SF.ParseName(GeneratorUtilities.GetFullFieldTypeName(field.Type)), SF.ArgumentList(), default))));
+                statements.Add(SF.ExpressionStatement(SF.AssignmentExpression(SyntaxKind.SimpleAssignmentExpression, SF.MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression, SF.ThisExpression(), SF.IdentifierName(GeneratorUtilities.GetValidFieldName(field.Name))), SF.ObjectCreationExpression(SF.ParseName(field.Type.FullName), SF.ArgumentList(), default))));
             }
 
             foreach (var field in typeDef.Fields)

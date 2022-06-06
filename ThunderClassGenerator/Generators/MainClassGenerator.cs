@@ -106,7 +106,7 @@ namespace ThunderClassGenerator.Generators
                         SF.List(GetFieldAttributes(field, addedFieldCount)),
                         SF.TokenList(SF.Token(SyntaxKind.PublicKeyword)),
                         SF.VariableDeclaration(
-                            SF.ParseTypeName(GeneratorUtilities.GetFullFieldTypeName(field.Type)),
+                            SF.ParseTypeName(field.Type.FullName),
                             SF.SeparatedList(new[] { SF.VariableDeclarator(GeneratorUtilities.GetValidFieldName(field.Name)) })))
                     .WithTrailingTrivia(SF.LineFeed));
                 addedFieldCount++;
