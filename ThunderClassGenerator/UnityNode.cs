@@ -5,11 +5,12 @@ using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using ThunderClassGenerator.Utilities;
 
 namespace ThunderClassGenerator
 {
     [DebuggerDisplay("{Name} ({TypeName})")]
-    public class UnityNode
+    public class UnityNode : IParent<UnityNode>, IChild<UnityNode>
     {
         public string TypeName { get; set; }
         public string Name { get; set; }
@@ -22,6 +23,9 @@ namespace ThunderClassGenerator
         public List<UnityNode> SubNodes { get; set; }
         public UnityNode Parent { get; set; }
         public SimpleTypeDef AssosiatedTypeDef { get; set; }
+
+        UnityNode IChild<UnityNode>.Parent => Parent;
+        IEnumerable<UnityNode> IParent<UnityNode>.Children => SubNodes;
 
         public UnityNode DeepClone()
         {

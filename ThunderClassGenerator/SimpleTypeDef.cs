@@ -4,11 +4,12 @@ using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using ThunderClassGenerator.Utilities;
 
 namespace ThunderClassGenerator
 {
     [DebuggerDisplay("{VersionnedName} Component={IsComponent} Generic={IsGeneric}")]
-    public class SimpleTypeDef
+    public class SimpleTypeDef : IChild<SimpleTypeDef>
     {
         public string Name { get; set; }
         public string Namespace { get; set; }
@@ -25,5 +26,7 @@ namespace ThunderClassGenerator
         public bool IsGeneric => GenericCount > 0;
         public bool IsComponent => TypeID != -1;
         public List<List<(string, List<byte>)>> GenericNodesPaths { get; } = new();
+
+        SimpleTypeDef IChild<SimpleTypeDef>.Parent => BaseType;
     }
 }

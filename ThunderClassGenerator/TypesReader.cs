@@ -6,6 +6,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using ThunderClassGenerator.Extensions;
+using ThunderClassGenerator.Utilities;
 
 namespace ThunderClassGenerator
 {
@@ -67,15 +68,55 @@ namespace ThunderClassGenerator
             FixNodes(classes, release);
             AssignNodeParents(classes);
 
-            var types = new Dictionary<(string, short, bool), SimpleTypeDef>();
-            var typePermutations = new Dictionary<(string, short, bool), TypePermutations>();
-            foreach (var @class in classes)
-            {
-                GatherPermutations(@class, release, typePermutations);
-            }
+            var typePermutations = GatherPermutations(classes, release);
 
             FixPermutations(typePermutations);
 
+            var types = CreateTypesFromPermutations(typePermutations);
+
+            foreach (var type in types.Values)
+            {
+                if (!string.IsNullOrWhiteSpace(type.Base))
+                {
+                    type.BaseType = types.FirstOrDefault(el => el.Key.Item1 == type.Base).Value;
+                }
+            }
+
+            var inverseOrderTypes = new HashSet<SimpleTypeDef>();
+            foreach (var @class in classes.Where(IsNotExistingType).SelectMany(c => Recursion.Downwards(c, (cc) => FindBase(classes, cc))))
+            {
+                var type = types.Values.FirstOrDefault(el => el.Name == @class.Name);
+                if (inverseOrderTypes.Contains(type))
+                {
+                    continue;
+                }
+
+                var node = release ? @class.ReleaseRootNode : @class.EditorRootNode;
+                if (node != null)
+                {
+                    foreach (var cNode in node.RecursionDepthFirst())
+                    {
+                        if (cNode.AssosiatedTypeDef is not PredefinedTypeDef)
+                        {
+                            inverseOrderTypes.Add(cNode.AssosiatedTypeDef);
+                        }
+                    }
+                }
+                inverseOrderTypes.Add(type);
+            }
+
+            foreach (var type in inverseOrderTypes)
+            {
+                ProcessTypeFields(type, types, typePermutations);
+            }
+
+            return types.Values;
+        }
+
+        private static Dictionary<(string, short, bool), SimpleTypeDef> CreateTypesFromPermutations(Dictionary<(string, short, bool), TypePermutations> typePermutations)
+        {
+            var types = new Dictionary<(string, short, bool), SimpleTypeDef>();
+            
             foreach (var row in typePermutations)
             {
                 var permutations = row.Value;
@@ -104,56 +145,20 @@ namespace ThunderClassGenerator
                 }
             }
 
-            foreach (var type in types.Values)
-            {
-                if (!string.IsNullOrWhiteSpace(type.Base))
-                {
-                    type.BaseType = types.FirstOrDefault(el => el.Key.Item1 == type.Base).Value;
-                }
-            }
-            var inverseOrderTypes = new HashSet<SimpleTypeDef>();
-            foreach (var @class in classes)
-            {
-                GatherTypesFromClassRecursive(@class);
-            }
-
-            void GatherTypesFromClassRecursive(UnityClass @class)
-            {
-                if (ExistingTypes.Contains(@class.Name.ToLowerInvariant()))
-                {
-                    return;
-                }
-                if (!string.IsNullOrWhiteSpace(@class.Base))
-                {
-                    GatherTypesFromClassRecursive(classes.FirstOrDefault(el => el.Name == @class.Base));
-                }
-                var node = release ? @class.ReleaseRootNode : @class.EditorRootNode;
-                if (node != null)
-                {
-                    GatherTypesFromNodeRecursive(node);
-                }
-                var type = types.Values.FirstOrDefault(el => el.Name == @class.Name);
-                inverseOrderTypes.Add(type);
-            }
-            void GatherTypesFromNodeRecursive(UnityNode node)
-            {
-                foreach (var cNode in node.SubNodes)
-                {
-                    GatherTypesFromNodeRecursive(cNode);
-                }
-                if (node.AssosiatedTypeDef is not PredefinedTypeDef)
-                {
-                    inverseOrderTypes.Add(node.AssosiatedTypeDef);
-                }
-            }
-
-            foreach (var type in inverseOrderTypes)
-            {
-                ProcessTypeFields(type, types, typePermutations);
-            }
-
-            return types.Values;
+            return types;
         }
+
+        private static UnityClass FindBase(IEnumerable<UnityClass> classes, UnityClass @class)
+        {
+            if (string.IsNullOrWhiteSpace(@class.Base))
+            {
+                return null;
+            }
+
+            return classes.FirstOrDefault(el => el.Name == @class.Base);
+        }
+
+        private static bool IsNotExistingType(UnityClass @class) => !ExistingTypes.Contains(@class.Name, StringComparer.InvariantCultureIgnoreCase);
 
         private static void AssignNodeParents(IEnumerable<UnityClass> classes)
         {
@@ -680,7 +685,7 @@ namespace ThunderClassGenerator
                     var permutations = new TypePermutations();
                     permutations.Nodes.AddRange(nodes);
                     var firstNode = nodes[0];
-                    //Assuming such types can't be generic, use hash of field types for unique names
+                    //Assuming such types can't be generic, use hash of field types and names for unique names
                     var typeName = $"{firstNode.TypeName}_{(uint)firstNode.SubNodes.Aggregate(0, (total, el) => total * -1521134295 + el.TypeName.GetDeterministicHashCode() + el.Name.GetDeterministicHashCode())}";
                     foreach (var node in nodes)
                     {
@@ -699,62 +704,37 @@ namespace ThunderClassGenerator
             }
         }
 
-        private void GatherPermutations(UnityClass @class, bool release, Dictionary<(string, short, bool), TypePermutations> typePermutations)
+        private static Dictionary<(string, short, bool), TypePermutations> GatherPermutations(IEnumerable<UnityClass> classes, bool release)
+        {
+            var typePermutations = new Dictionary<(string, short, bool), TypePermutations>();
+            foreach (var @class in classes.Where(IsNotExistingType))
+            {
+                GatherPermutations(@class, typePermutations, release);
+            }
+
+            return typePermutations;
+        }
+
+        private static void GatherPermutations(UnityClass @class, Dictionary<(string, short, bool), TypePermutations> typePermutations, bool release)
         {
             var node = release ? @class.ReleaseRootNode : @class.EditorRootNode;
-            if (ExistingTypes.Contains(@class.Name.ToLowerInvariant()))
-            {
-                return;
-            }
-            var permutations = typePermutations.GetOrAdd((@class.Name, node?.Version ?? 1, true));
-            permutations.Class = @class;
+            typePermutations.GetOrAdd((@class.Name, node?.Version ?? 1, true)).Class = @class;
             if (node == null)
             {
                 return;
             }
-            GatherPermutations(node, typePermutations, true);
-        }
 
-        private void GatherPermutations(UnityNode node, Dictionary<(string, short, bool), TypePermutations> typePermutations, bool isComponent = false)
-        {
-            var typeLower = node.TypeName.ToLowerInvariant();
-            if (ExistingTypes.Contains(typeLower))
+            foreach (var cNode in node.RecursionSimple())
             {
-                switch (typeLower)
+                if (ExistingTypes.Contains(cNode.TypeName, StringComparer.InvariantCultureIgnoreCase))
                 {
-                    case "pair":
-                        GatherPermutations(node.SubNodes[0], typePermutations);
-                        GatherPermutations(node.SubNodes[1], typePermutations);
-                        break;
-                    case "map":
-                    case "fixed_bitset":
-                    case "staticvector":
-                    case "vector":
-                    case "set":
-                        node.SubNodes[0].AssosiatedTypeDef = GetPredefinedTypeDef(node.SubNodes[0]);
-                        node.SubNodes[0].SubNodes[0].AssosiatedTypeDef = GetPredefinedTypeDef(node.SubNodes[0].SubNodes[0]);
-                        GatherPermutations(node.SubNodes[0].SubNodes[1], typePermutations);
-                        break;
-                    case "typelessdata":
-                        node.SubNodes[0].AssosiatedTypeDef = GetPredefinedTypeDef(node.SubNodes[0]);
-                        GatherPermutations(node.SubNodes[1], typePermutations);
-                        break;
-                    case "string":
-                        node.SubNodes[0].AssosiatedTypeDef = GetPredefinedTypeDef(node.SubNodes[0]);
-                        node.SubNodes[0].SubNodes[0].AssosiatedTypeDef = GetPredefinedTypeDef(node.SubNodes[0].SubNodes[0]);
-                        node.SubNodes[0].SubNodes[1].AssosiatedTypeDef = GetPredefinedTypeDef(node.SubNodes[0].SubNodes[1]);
-                        break;
+                    cNode.AssosiatedTypeDef = GetPredefinedTypeDef(cNode);
+                    continue;
                 }
-                node.AssosiatedTypeDef = GetPredefinedTypeDef(node);
-                return;
-            }
-            _ = IsGenericTypeName(node.TypeName, out var name, out _, out _);
 
-            var permutations = typePermutations.GetOrAdd((name, node.Version, isComponent));
-            permutations.Nodes.Add(node);
-            foreach (var cNode in node.SubNodes)
-            {
-                GatherPermutations(cNode, typePermutations);
+                _ = IsGenericTypeName(cNode.TypeName, out var name, out _, out _);
+
+                typePermutations.GetOrAdd((name, cNode.Version, cNode == node)).Nodes.Add(cNode);
             }
         }
 
