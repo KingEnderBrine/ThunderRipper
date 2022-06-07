@@ -55,11 +55,11 @@ namespace ThunderClassGenerator
             "vector",
             "set",
             "typelessdata",
+            "array",
+
             //Never used and are not propper c# types
             "void",
             "type*",
-
-            "array",
         };
 
         public IEnumerable<SimpleTypeDef> ReadTypes(IEnumerable<UnityClass> classes, bool release = true)
@@ -69,19 +69,23 @@ namespace ThunderClassGenerator
             AssignNodeParents(classes);
 
             var typePermutations = GatherPermutations(classes, release);
-
             FixPermutations(typePermutations);
 
             var types = CreateTypesFromPermutations(typePermutations);
+            AssignBaseTypes(types);
 
-            foreach (var type in types.Values)
+            var inverseOrderTypes = GetTypesToProcess(types, classes, release);
+
+            foreach (var type in inverseOrderTypes)
             {
-                if (!string.IsNullOrWhiteSpace(type.Base))
-                {
-                    type.BaseType = types.FirstOrDefault(el => el.Key.Item1 == type.Base).Value;
-                }
+                ProcessTypeFields(type, types, typePermutations);
             }
 
+            return types.Values;
+        }
+
+        private static HashSet<SimpleTypeDef> GetTypesToProcess(Dictionary<(string, short, bool), SimpleTypeDef> types, IEnumerable<UnityClass> classes, bool release)
+        {
             var inverseOrderTypes = new HashSet<SimpleTypeDef>();
             foreach (var @class in classes.Where(IsNotExistingType).SelectMany(c => Recursion.Downwards(c, (cc) => FindBase(classes, cc))))
             {
@@ -105,12 +109,18 @@ namespace ThunderClassGenerator
                 inverseOrderTypes.Add(type);
             }
 
-            foreach (var type in inverseOrderTypes)
-            {
-                ProcessTypeFields(type, types, typePermutations);
-            }
+            return inverseOrderTypes;
+        }
 
-            return types.Values;
+        private static void AssignBaseTypes(Dictionary<(string, short, bool), SimpleTypeDef> types)
+        {
+            foreach (var type in types.Values)
+            {
+                if (!string.IsNullOrWhiteSpace(type.Base))
+                {
+                    type.BaseType = types.FirstOrDefault(el => el.Key.Item1 == type.Base).Value;
+                }
+            }
         }
 
         private static Dictionary<(string, short, bool), SimpleTypeDef> CreateTypesFromPermutations(Dictionary<(string, short, bool), TypePermutations> typePermutations)
@@ -464,21 +474,19 @@ namespace ThunderClassGenerator
                 }
             }
 
+            type.Done = true;
+        }
 
-            bool FieldExistsInParent(string fieldName, SimpleTypeDef type)
+        private static bool FieldExistsInParent(string fieldName, SimpleTypeDef type)
+        {
+            foreach (var baseType in type.RecursionUpwards())
             {
-                if (type.BaseType == null)
-                {
-                    return false;
-                }
-                if (type.BaseType.Fields.Any(f => f.Name == fieldName))
+                if (baseType.Fields.Any(f => f.Name == fieldName))
                 {
                     return true;
                 }
-                return FieldExistsInParent(fieldName, type.BaseType);
             }
-
-            type.Done = true;
+            return false;
         }
 
         private List<List<(string, List<byte>)>> SplitGroups(HashSet<List<(string, List<byte>)>> groups, IEqualityComparer<(string, List<byte>)> groupItemComparer)
@@ -755,20 +763,20 @@ namespace ThunderClassGenerator
             return true;
         }
 
-        public static FieldDef GetFieldDefForNode(UnityNode node, Dictionary<(string, short, bool), SimpleTypeDef> otherTypeDefs)
+        public static FieldDef GetFieldDefForNode(UnityNode node, Dictionary<(string, short, bool), SimpleTypeDef> types)
         {
             var fieldDef = new FieldDef
             {
                 Name = node.Name,
-                Type = GetTypeUsageDefForNode(node, otherTypeDefs),
+                Type = GetTypeUsageDefForNode(node, types),
             };
 
             return fieldDef;
         }
 
-        private static TypeUsageDef GetTypeUsageDefForNode(UnityNode node, Dictionary<(string, short, bool), SimpleTypeDef> otherTypeDefs)
+        private static TypeUsageDef GetTypeUsageDefForNode(UnityNode node, Dictionary<(string, short, bool), SimpleTypeDef> types)
         {
-            var typeDef = GetPredefinedTypeDef(node) ?? otherTypeDefs[(node.AssosiatedTypeDef.Name, node.Version, false)];
+            var typeDef = GetPredefinedTypeDef(node) ?? types[(node.AssosiatedTypeDef.Name, node.Version, false)];
 
             var genericDef = new TypeUsageDef
             {
@@ -780,25 +788,25 @@ namespace ThunderClassGenerator
             switch (typeLower)
             {
                 case "pair":
-                    genericDef.GenericArgs.Add(GetTypeUsageDefForNode(node.SubNodes[0], otherTypeDefs));
-                    genericDef.GenericArgs.Add(GetTypeUsageDefForNode(node.SubNodes[1], otherTypeDefs));
+                    genericDef.GenericArgs.Add(GetTypeUsageDefForNode(node.SubNodes[0], types));
+                    genericDef.GenericArgs.Add(GetTypeUsageDefForNode(node.SubNodes[1], types));
                     break;
                 case "map":
                 case "fixed_bitset":
                 case "staticvector":
                 case "vector":
                 case "set":
-                    genericDef.GenericArgs.Add(GetTypeUsageDefForNode(node.SubNodes[0].SubNodes[1], otherTypeDefs));
+                    genericDef.GenericArgs.Add(GetTypeUsageDefForNode(node.SubNodes[0].SubNodes[1], types));
                     genericDef.MetaFlags |= node.SubNodes[0].MetaFlag;
                     break;
                 case "typelessdata":
-                    genericDef.GenericArgs.Add(GetTypeUsageDefForNode(node.SubNodes[1], otherTypeDefs));
+                    genericDef.GenericArgs.Add(GetTypeUsageDefForNode(node.SubNodes[1], types));
                     break;
                 default:
                     if (IsGenericTypeName(node.TypeName, out var nameWithoutGeneric, out _, out var args))
                     {
                         var isComponent = nameWithoutGeneric == "PPtr";
-                        genericDef.GenericArgs.AddRange(args.Select(el => new TypeUsageDef { Type = otherTypeDefs.FirstOrDefault(e => e.Key.Item1 == el && e.Key.Item3 == isComponent).Value }));
+                        genericDef.GenericArgs.AddRange(args.Select(el => new TypeUsageDef { Type = types.FirstOrDefault(e => e.Key.Item1 == el && e.Key.Item3 == isComponent).Value }));
                     }
                     else if (typeDef.IsGeneric)
                     {
@@ -806,7 +814,7 @@ namespace ThunderClassGenerator
                         {
                             var firstRow = pathRows[0];
                             var cNode = TraverseFieldNode(node.SubNodes.FirstOrDefault(el => el.Name == firstRow.Item1), firstRow.Item2);
-                            var def = GetTypeUsageDefForNode(cNode, otherTypeDefs);
+                            var def = GetTypeUsageDefForNode(cNode, types);
                             genericDef.GenericArgs.Add(def);
                         }
                     }

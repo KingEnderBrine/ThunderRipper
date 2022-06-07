@@ -17,6 +17,18 @@ namespace ThunderClassGenerator.Utilities
         T Parent { get; }
     }
 
+    public struct RecursionItem<T>
+    {
+        public T Parent { get; init; }
+        public T Child { get; init; }
+
+        public RecursionItem(T parent, T child)
+        {
+            Parent = parent;
+            Child = child;
+        }
+    }
+
     public static class Recursion
     {
         public static IEnumerable<T> Upwards<T>(T child, Func<T, T> parentFunc, bool includeSelf)
@@ -45,7 +57,7 @@ namespace ThunderClassGenerator.Utilities
             }
         }
 
-        public static IEnumerable<T> DepthFirst<T>(T parent, Func<T, IEnumerable<T>> childrenFunc)
+        public static IEnumerable<T> DepthFirst<T>(T parent, Func<T, IEnumerable<T>> childrenFunc, bool includeSelf = true)
         {
             var enumeratorStack = new Stack<IEnumerator<T>>();
             var itemStack = new Stack<T>();
@@ -65,7 +77,39 @@ namespace ThunderClassGenerator.Utilities
                 }
 
                 enumeratorStack.Pop();
-                yield return itemStack.Pop();
+                var item = itemStack.Pop();
+                if (itemStack.Count > 0 || includeSelf)
+                {
+                    yield return item;
+                }
+            }
+        }
+
+        public static IEnumerable<RecursionItem<T>> DepthFirstParented<T>(T parent, Func<T, IEnumerable<T>> childrenFunc)
+        {
+            var enumeratorStack = new Stack<IEnumerator<T>>();
+            var itemStack = new Stack<T>();
+
+            enumeratorStack.Push(childrenFunc(parent)?.GetEnumerator() ?? new EmptyEnumerator<T>());
+            itemStack.Push(parent);
+
+            while (itemStack.Count > 0)
+            {
+                var enumerator = enumeratorStack.Peek();
+                if (enumerator.MoveNext())
+                {
+                    var nextItem = enumerator.Current;
+                    enumeratorStack.Push(childrenFunc(nextItem)?.GetEnumerator() ?? new EmptyEnumerator<T>());
+                    itemStack.Push(nextItem);
+                    continue;
+                }
+
+                enumeratorStack.Pop();
+                var item = itemStack.Pop();
+                if (itemStack.Count > 0)
+                {
+                    yield return new RecursionItem<T>(itemStack.Peek(), item);
+                }
             }
         }
 
@@ -117,7 +161,7 @@ namespace ThunderClassGenerator.Utilities
 
     public static class ParentExtensions
     {
-        public static IEnumerable<T> RecursionDepthFirst<T>(this T parent) where T : IParent<T>
+        public static IEnumerable<T> RecursionDepthFirst<T>(this T parent, bool includeSelf = true) where T : IParent<T>
         {
             var enumeratorStack = new Stack<IEnumerator<T>>();
             var itemStack = new Stack<T>();
@@ -137,7 +181,39 @@ namespace ThunderClassGenerator.Utilities
                 }
 
                 enumeratorStack.Pop();
-                yield return itemStack.Pop();
+                var item = itemStack.Pop();
+                if (itemStack.Count > 0 || includeSelf)
+                {
+                    yield return item;
+                }
+            }
+        }
+
+        public static IEnumerable<RecursionItem<T>> RecursionDepthFirstParented<T>(this T parent) where T : IParent<T>
+        {
+            var enumeratorStack = new Stack<IEnumerator<T>>();
+            var itemStack = new Stack<T>();
+
+            enumeratorStack.Push(parent.Children?.GetEnumerator() ?? new EmptyEnumerator<T>());
+            itemStack.Push(parent);
+
+            while (itemStack.Count > 0)
+            {
+                var enumerator = enumeratorStack.Peek();
+                if (enumerator.MoveNext())
+                {
+                    var nextItem = enumerator.Current;
+                    enumeratorStack.Push(nextItem.Children?.GetEnumerator() ?? new EmptyEnumerator<T>());
+                    itemStack.Push(nextItem);
+                    continue;
+                }
+
+                enumeratorStack.Pop();
+                var item = itemStack.Pop();
+                if (itemStack.Count > 0)
+                {
+                    yield return new RecursionItem<T>(itemStack.Peek(), item);
+                }
             }
         }
 
