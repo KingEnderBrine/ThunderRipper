@@ -417,6 +417,21 @@ namespace ThunderClassGenerator
                 type.GenericCount = finalGroups.Count;
             }
 
+            MergeArrayFields(type);
+
+            foreach (var field in type.Fields)
+            {
+                if (FieldExistsInParent(field.Name, type))
+                {
+                    field.ExistsInBase = true;
+                }
+            }
+
+            type.Done = true;
+        }
+
+        private static void MergeArrayFields(SimpleTypeDef type)
+        {
             var currentIndex = -1;
             string currentName = null;
             for (var i = 0; i < type.Fields.Count; i++)
@@ -444,42 +459,34 @@ namespace ThunderClassGenerator
 
             void ResetCurrent(int endIndex)
             {
-                if (currentIndex != -1)
+                if (currentIndex == -1)
                 {
-                    var removeIndex = endIndex - currentIndex + 1;
-                    var field = type.Fields[removeIndex - 1];
-                    field.Name = currentName;
-                    field.Type = new TypeUsageDef
-                    {
-                        GenericArgs = { new TypeUsageDef { Type = field.Type.Type } },
-                        Type = PredefinedTypeDef.List,
-                    };
-                    field.FixedLength = currentIndex + 1;
-
-                    for (; currentIndex > 0; currentIndex--)
-                    {
-                        type.Fields.RemoveAt(removeIndex);
-                    }
-
-                    currentName = null;
-                    currentIndex = -1;
+                    return;
                 }
-            }
 
-            foreach (var field in type.Fields)
-            {
-                if (FieldExistsInParent(field.Name, type))
+                var removeIndex = endIndex - currentIndex + 1;
+                var field = type.Fields[removeIndex - 1];
+                field.Name = currentName;
+                field.Type = new TypeUsageDef
                 {
-                    field.ExistsInBase = true;
-                }
-            }
+                    GenericArgs = { new TypeUsageDef { Type = field.Type.Type } },
+                    Type = PredefinedTypeDef.List,
+                };
+                field.FixedLength = currentIndex + 1;
 
-            type.Done = true;
+                for (; currentIndex > 0; currentIndex--)
+                {
+                    type.Fields.RemoveAt(removeIndex);
+                }
+
+                currentName = null;
+                currentIndex = -1;
+            }
         }
 
         private static bool FieldExistsInParent(string fieldName, SimpleTypeDef type)
         {
-            foreach (var baseType in type.RecursionUpwards())
+            foreach (var baseType in type.RecursionUpwards(false))
             {
                 if (baseType.Fields.Any(f => f.Name == fieldName))
                 {
