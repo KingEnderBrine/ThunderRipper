@@ -1,9 +1,12 @@
 ﻿using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
+using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
 using ThunderClassGenerator.Generators;
+using ThunderClassGenerator.Rewriters;
 using ThunderRipperShared.Utilities;
 
 namespace ThunderClassGenerator
@@ -12,6 +15,59 @@ namespace ThunderClassGenerator
     {
         public static void Main(string[] args)
         {
+            /*IEnumerable<SimpleTypeDef> previousReleaseTypes = null;
+            IEnumerable<SimpleTypeDef> previousEditorTypes = null;
+            foreach (var file in Directory.EnumerateFiles(@"D:\RoR2 Modding\Repos\TypeTreeDumps\InfoJson").OrderBy(f => new UnityVersion(Path.GetFileNameWithoutExtension(f))))
+            {
+                var info = JsonSerializer.Deserialize<Info>(File.ReadAllText(file));
+                var releaseTypes = new TypesReader().ReadTypes(info.Classes, true);
+
+                info = JsonSerializer.Deserialize<Info>(File.ReadAllText(file));
+                var editorTypes = new TypesReader().ReadTypes(info.Classes, false);
+
+                if (previousReleaseTypes != null)
+                {
+                    CompareFieldsOrder(releaseTypes, previousReleaseTypes);
+                }
+                if (previousEditorTypes != null)
+                {
+                    CompareFieldsOrder(editorTypes, previousEditorTypes);
+                }
+
+                previousReleaseTypes = releaseTypes;
+                previousEditorTypes = editorTypes;
+            }
+
+            void CompareFieldsOrder(IEnumerable<SimpleTypeDef> current, IEnumerable<SimpleTypeDef> previous)
+            {
+                foreach (var prevType in previous)
+                {
+                    var currentType = current.FirstOrDefault(t => t.Name == prevType.Name && t.IsComponent == prevType.IsComponent);
+                    if (currentType == null)
+                    {
+                        continue;
+                    }
+
+                    var maxIndex = -1;
+
+                    foreach (var field in prevType.Fields)
+                    {
+                        var index = currentType.Fields.FindIndex(f => f.Name == field.Name);
+                        if (index < 0)
+                        {
+                            continue;
+                        }
+                        if (maxIndex >= index)
+                        {
+                            throw new System.Exception();
+                        }
+
+                        maxIndex = index;
+                    }
+                }
+            }
+
+            return;*/
             /*
             foreach (var file in Directory.EnumerateFiles(@"D:\RoR2 Modding\Repos\TypeTreeDumps\InfoJson").OrderBy(f => new UnityVersion(Path.GetFileNameWithoutExtension(f))))
             {
@@ -28,8 +84,9 @@ namespace ThunderClassGenerator
 
             foreach (var typeDef in types)
             {
-                var tree = MainClassGenerator.GetOrCreateTree(typeDef);
-                var root = tree.GetRoot().NormalizeWhitespace();
+                var tree = GetOrCreateTree(typeDef, (typeDef) => MainClassGenerator.CreateTree(typeDef, true), "");
+                var root = tree.GetRoot().NormalizeWhitespace(elasticTrivia: true);
+                root = new FieldsRewriter(typeDef).Visit(root);
                 tree = tree.WithRootAndOptions(root, tree.Options);
                 WriteTree(tree);
                 /*
@@ -43,6 +100,16 @@ namespace ThunderClassGenerator
                 exporterTree = exporterTree.WithRootAndOptions(exporterRoot, exporterTree.Options);
                 WriteTree(exporterTree);*/
             }
+        }
+
+        private static SyntaxTree GetOrCreateTree(SimpleTypeDef typeDef, Func<SimpleTypeDef, SyntaxTree> createTreeFunc, string fileNamePostfix)
+        {
+            var filePath = Path.Combine(Strings.SolutionFolder, Path.Combine(GeneratorUtilities.GetNamespaceString(typeDef).Split('.')), typeDef.Name, $"{typeDef.VersionnedName}{fileNamePostfix}.cs");
+            if (File.Exists(filePath))
+            {
+                return CSharpSyntaxTree.ParseText(File.ReadAllText(filePath), new CSharpParseOptions(GeneratorUtilities.LangVersion), filePath);
+            }
+            return createTreeFunc(typeDef).WithFilePath(filePath);
         }
 
         private static void WriteTree(SyntaxTree tree)

@@ -104,9 +104,25 @@ namespace ThunderClassGenerator.Generators
             return replacement;
         }
 
+        public static NameSyntax GetNamespaceIdentifier(SimpleTypeDef typeDef)
+        {
+            return SF.IdentifierName(GetNamespaceString(typeDef));
+        }
+
         public static string GetNamespaceString(SimpleTypeDef typeDef)
         {
-            return string.IsNullOrWhiteSpace(typeDef.Namespace) ? Strings.OutputNamespace : typeDef is PredefinedTypeDef ? typeDef.Namespace : $"{Strings.OutputNamespace}.{typeDef.Namespace}";
+            if (typeDef is PredefinedTypeDef)
+            {
+                return typeDef.Namespace;
+            }
+
+            var outputNamespace = typeDef.IsComponent ? Strings.OutputComponentNamespace : Strings.OutputClassNamespace;
+            if (string.IsNullOrWhiteSpace(typeDef.Namespace))
+            {
+                return outputNamespace;
+            }
+
+            return $"{outputNamespace}.{typeDef.Namespace}";
         }
 
         public static AttributeListSyntax CreateSimpleAttribute(string name, IEnumerable<AttributeArgumentSyntax> args = null)

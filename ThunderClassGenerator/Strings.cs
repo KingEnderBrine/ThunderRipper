@@ -11,7 +11,8 @@ namespace ThunderClassGenerator
     {
         public static string DefaultNamespace { get; } = "ThunderRipperWorker";
         public static string SharedNamespace { get; } = "ThunderRipperShared";
-        public static string OutputNamespace { get; } = $"{DefaultNamespace}.UnityClasses";
+        public static string OutputComponentNamespace { get; } = $"{DefaultNamespace}.UnityComponents";
+        public static string OutputClassNamespace { get; } = $"{DefaultNamespace}.UnityClasses";
         public static string CollectionsGeneric { get; } = "System.Collections.Generic";
         public static string ThunderRipperAttributes { get; } = $"{SharedNamespace}.Attributes";
         public static string ThunderRipperAssets { get; } = $"{SharedNamespace}.Assets";

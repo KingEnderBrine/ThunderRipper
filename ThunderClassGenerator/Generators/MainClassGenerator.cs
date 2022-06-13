@@ -14,28 +14,20 @@ namespace ThunderClassGenerator.Generators
 {
     public class MainClassGenerator
     {
-        public static SyntaxTree GetOrCreateTree(SimpleTypeDef typeDef)
+        public static SyntaxTree CreateTree(SimpleTypeDef typeDef, bool mainFile)
         {
-            var filePath = Path.Combine(Strings.SolutionFolder, Path.Combine(GeneratorUtilities.GetNamespaceString(typeDef).Split('.')), typeDef.Name, $"{typeDef.VersionnedName}.cs");
-            //if (File.Exists(filePath))
-            //{
-            //    return CSharpSyntaxTree.ParseText(File.ReadAllText(filePath), new CSharpParseOptions(LangVersion), filePath);
-            //}
-            return CreateSyntaxTree(typeDef, filePath);
+            var root = SF.CompilationUnit(default, GeneratorUtilities.GetUsings(typeDef), default, GetNamespaceMember(typeDef, mainFile));
+            return CSharpSyntaxTree.Create(root, new CSharpParseOptions(GeneratorUtilities.LangVersion));
         }
 
-        private static SyntaxTree CreateSyntaxTree(SimpleTypeDef typeDef, string filePath)
+        private static SyntaxList<MemberDeclarationSyntax> GetNamespaceMember(SimpleTypeDef typeDef, bool mainFile)
         {
-            var root = SF.CompilationUnit(default, GeneratorUtilities.GetUsings(typeDef), default, GetNamespaceMember(typeDef));
-            return CSharpSyntaxTree.Create(root, new CSharpParseOptions(GeneratorUtilities.LangVersion), filePath);
-        }
-
-        private static SyntaxList<MemberDeclarationSyntax> GetNamespaceMember(SimpleTypeDef typeDef)
-        {
-            var @class = SF.ClassDeclaration(GetClassAttributes(typeDef), GetClassModifiers(typeDef), SF.Identifier(typeDef.VersionnedName), GetTypeParameters(typeDef), GetBase(typeDef), GetClassConstraints(typeDef), GetFields(typeDef));
-            var @namespace = SF.NamespaceDeclaration(GetNamespace(typeDef), default, default, SF.List(new MemberDeclarationSyntax[] { @class }));
-            var comment = SF.Comment(Strings.CreatedWithComment);
-            return SF.List(new MemberDeclarationSyntax[] { @namespace.WithLeadingTrivia(comment) });
+            var @class = mainFile ?
+                SF.ClassDeclaration(default, GetClassModifiers(typeDef), SF.Identifier(typeDef.VersionnedName), GetTypeParameters(typeDef), GetBase(typeDef), GetClassConstraints(typeDef), GetFields(typeDef))
+                : SF.ClassDeclaration(default, GetClassModifiers(typeDef), SF.Identifier(typeDef.VersionnedName), GetTypeParameters(typeDef), default, default, default);
+            var @namespace = SF.NamespaceDeclaration(GeneratorUtilities.GetNamespaceIdentifier(typeDef), default, default, SF.List(new MemberDeclarationSyntax[] { @class }));
+            
+            return SF.List(new MemberDeclarationSyntax[] { @namespace });
         }
 
         private static SyntaxList<TypeParameterConstraintClauseSyntax> GetClassConstraints(SimpleTypeDef typeDef)
@@ -52,23 +44,11 @@ namespace ThunderClassGenerator.Generators
             return SF.List(constraints);
         }
 
-        private static SyntaxList<AttributeListSyntax> GetClassAttributes(SimpleTypeDef typeDef)
-        {
-            var attributes = new List<AttributeListSyntax>();
-
-            if (typeDef.FlowMapping)
-            {
-                attributes.Add(GeneratorUtilities.CreateSimpleAttribute("FlowMapping"));
-            }
-
-            return SF.List(attributes);
-        }
-
         private static SyntaxList<MemberDeclarationSyntax> GetFields(SimpleTypeDef typeDef)
         {
-            var fields = new List<MemberDeclarationSyntax>();
+            var members = new List<MemberDeclarationSyntax>();
 
-            fields.Add(
+            members.Add(
                     SF.PropertyDeclaration(
                         default,
                         SF.TokenList(SF.Token(SyntaxKind.PublicKeyword), SF.Token(SyntaxKind.OverrideKeyword)),
@@ -81,7 +61,7 @@ namespace ThunderClassGenerator.Generators
                     .WithSemicolonToken(SF.Token(SyntaxKind.SemicolonToken))
                     .WithTrailingTrivia(SF.LineFeed));
 
-            fields.Add(
+            members.Add(
                     SF.PropertyDeclaration(
                         default,
                         SF.TokenList(SF.Token(SyntaxKind.PublicKeyword), SF.Token(SyntaxKind.OverrideKeyword)),
@@ -94,7 +74,7 @@ namespace ThunderClassGenerator.Generators
                     .WithSemicolonToken(SF.Token(SyntaxKind.SemicolonToken))
                     .WithTrailingTrivia(SF.LineFeed));
 
-            var addedFieldCount = 0;
+            /*var addedFieldCount = 0;
             foreach (var field in typeDef.Fields)
             {
                 if (field.ExistsInBase)
@@ -110,12 +90,12 @@ namespace ThunderClassGenerator.Generators
                             SF.SeparatedList(new[] { SF.VariableDeclarator(GeneratorUtilities.GetValidFieldName(field.Name)) })))
                     .WithTrailingTrivia(SF.LineFeed));
                 addedFieldCount++;
-            }
+            }*/
 
-            return SF.List(fields);
+            return SF.List(members);
         }
 
-        private static IEnumerable<AttributeListSyntax> GetFieldAttributes(FieldDef field, int order)
+        /*private static IEnumerable<AttributeListSyntax> GetFieldAttributes(FieldDef field, int order)
         {
             if ((field.Type.MetaFlags & (int)MetaFlag.AlignBytesFlag) != 0)
             {
@@ -124,7 +104,7 @@ namespace ThunderClassGenerator.Generators
 
             yield return GeneratorUtilities.CreateSimpleAttribute("Order", new[] { SF.AttributeArgument(SF.LiteralExpression(SyntaxKind.NumericLiteralExpression, SF.Literal(order))) });
             yield return GeneratorUtilities.CreateSimpleAttribute("SerializedName", new[] { SF.AttributeArgument(SF.LiteralExpression(SyntaxKind.StringLiteralExpression, SF.Literal(field.Name))) });
-        }
+        }*/
 
         private static TypeParameterListSyntax GetTypeParameters(SimpleTypeDef typeDef)
         {
@@ -140,11 +120,6 @@ namespace ThunderClassGenerator.Generators
             }
 
             return SF.TypeParameterList(SF.SeparatedList(types));
-        }
-
-        private static NameSyntax GetNamespace(SimpleTypeDef typeDef)
-        {
-            return SF.IdentifierName(GeneratorUtilities.GetNamespaceString(typeDef));
         }
 
         private static SyntaxTokenList GetClassModifiers(SimpleTypeDef typeDef)
