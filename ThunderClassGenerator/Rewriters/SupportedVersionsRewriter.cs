@@ -1,6 +1,7 @@
 ﻿using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using System;
 using System.Linq;
 using ThunderRipperShared.Utilities;
 using SF = Microsoft.CodeAnalysis.CSharp.SyntaxFactory;
@@ -28,7 +29,7 @@ namespace ThunderClassGenerator.Rewriters
         {
             if (node.Declaration.Variables[0].Identifier.ValueText == "SupportedVersions")
             {
-                return new MultilineArrayRewriter().Visit(base.VisitFieldDeclaration(node));
+                return new MultilineCollectionRewriter().Visit(base.VisitFieldDeclaration(node));
             }
 
             return node;
@@ -41,11 +42,8 @@ namespace ThunderClassGenerator.Rewriters
                 return base.VisitInitializerExpression(node);
             }
 
-            var index = node.Expressions.LastIndexOf(e => GetVersionFromExpression(e) < version);
-            if (index < 0)
-            {
-                index = node.Expressions.Count;
-            }
+            var index = node.Expressions.LastIndexOf(e => e is ObjectCreationExpressionSyntax objectCreation && (GetVersionFromCreationExpression(objectCreation) < version)) + 1;
+
             return node.WithExpressions(SF.SeparatedList(node.Expressions.Insert(index, CreateVersionExpression(version))));
         }
 
@@ -87,14 +85,9 @@ namespace ThunderClassGenerator.Rewriters
                 .NormalizeWhitespace();
         }
 
-        private static UnityVersion GetVersionFromExpression(ExpressionSyntax expression)
+        private static UnityVersion GetVersionFromCreationExpression(ObjectCreationExpressionSyntax expression)
         {
-            if (expression is not ObjectCreationExpressionSyntax objectCreation)
-            {
-                return default;
-            }
-
-            var firstArgument = objectCreation.ArgumentList.Arguments.FirstOrDefault()?.Expression;
+            var firstArgument = expression.ArgumentList.Arguments.FirstOrDefault()?.Expression;
             if (firstArgument is not LiteralExpressionSyntax literal || !literal.Token.IsKind(SyntaxKind.StringLiteralToken))
             {
                 return default;

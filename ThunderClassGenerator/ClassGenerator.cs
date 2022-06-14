@@ -85,32 +85,40 @@ namespace ThunderClassGenerator
 
             var info = JsonSerializer.Deserialize<Info>(File.ReadAllText(@"D:\info.json"));
             var types = new TypesReader().ReadTypes(info.Classes, true);
+            var typeMappingPath = Path.Combine(Strings.SolutionFolder, Strings.DefaultNamespace, "Constants.cs");
+            var typeMappingTree = CSharpSyntaxTree.ParseText(File.ReadAllText(typeMappingPath), new CSharpParseOptions(GeneratorUtilities.LangVersion), typeMappingPath);
+            var typeMappingRoot = new TypeMappingRewriter(new UnityVersion(info.Version), types).Visit(typeMappingTree.GetRoot());
+            typeMappingTree = typeMappingTree.WithRootAndOptions(typeMappingRoot, typeMappingTree.Options);
+            WriteTree(typeMappingTree);
 
-            var supportedVersionsPath = Path.Combine(Strings.SolutionFolder, Strings.DefaultNamespace, "Constants.cs");
-            var supportedVersionsTree = CSharpSyntaxTree.ParseText(File.ReadAllText(supportedVersionsPath), new CSharpParseOptions(GeneratorUtilities.LangVersion), supportedVersionsPath);
-            var supportedVersionsRoot = new SupportedVersionsRewriter(new UnityVersion(info.Version)).Visit(supportedVersionsTree.GetRoot());
-            supportedVersionsTree = supportedVersionsTree.WithRootAndOptions(supportedVersionsRoot, supportedVersionsTree.Options);
-            WriteTree(supportedVersionsTree);
+            //foreach (var file in Directory.EnumerateFiles(@"D:\RoR2 Modding\Repos\TypeTreeDumps\InfoJson").OrderBy(f => Random.Shared.Next(500)))
+            //{
+            //    var info = JsonSerializer.Deserialize<Info>(File.ReadAllText(file));
+            //    var supportedVersionsPath = Path.Combine(Strings.SolutionFolder, Strings.DefaultNamespace, "Constants.cs");
+            //    var supportedVersionsTree = CSharpSyntaxTree.ParseText(File.ReadAllText(supportedVersionsPath), new CSharpParseOptions(GeneratorUtilities.LangVersion), supportedVersionsPath);
+            //    var supportedVersionsRoot = new SupportedVersionsRewriter(new UnityVersion(info.Version)).Visit(supportedVersionsTree.GetRoot());
+            //    supportedVersionsTree = supportedVersionsTree.WithRootAndOptions(supportedVersionsRoot, supportedVersionsTree.Options);
+            //    WriteTree(supportedVersionsTree);
+            //}
 
-            return;
-            foreach (var typeDef in types)
-            {
-                var tree = GetOrCreateTree(typeDef, (typeDef) => MainClassGenerator.CreateTree(typeDef, true), "");
-                var root = tree.GetRoot();
-                root = new FieldsRewriter(typeDef, new UnityVersion(info.Version)).Visit(root);
-                tree = tree.WithRootAndOptions(root, tree.Options);
-                WriteTree(tree);
-                /*
-                var readerTree = ReaderClassGenerator.GetOrCreateTree(typeDef);
-                var readerRoot = readerTree.GetRoot().NormalizeWhitespace();
-                readerTree = readerTree.WithRootAndOptions(readerRoot, readerTree.Options);
-                WriteTree(readerTree);
-
-                var exporterTree = ExporterClassGenerator.GetOrCreateTree(typeDef);
-                var exporterRoot = exporterTree.GetRoot().NormalizeWhitespace();
-                exporterTree = exporterTree.WithRootAndOptions(exporterRoot, exporterTree.Options);
-                WriteTree(exporterTree);*/
-            }
+            //foreach (var typeDef in types)
+            //{
+            //    var tree = GetOrCreateTree(typeDef, (typeDef) => MainClassGenerator.CreateTree(typeDef, true), "");
+            //    var root = tree.GetRoot();
+            //    root = new FieldsRewriter(typeDef, new UnityVersion(info.Version)).Visit(root);
+            //    tree = tree.WithRootAndOptions(root, tree.Options);
+            //    WriteTree(tree);
+            //    
+            //    var readerTree = ReaderClassGenerator.GetOrCreateTree(typeDef);
+            //    var readerRoot = readerTree.GetRoot().NormalizeWhitespace();
+            //    readerTree = readerTree.WithRootAndOptions(readerRoot, readerTree.Options);
+            //    WriteTree(readerTree);
+            //
+            //    var exporterTree = ExporterClassGenerator.GetOrCreateTree(typeDef);
+            //    var exporterRoot = exporterTree.GetRoot().NormalizeWhitespace();
+            //    exporterTree = exporterTree.WithRootAndOptions(exporterRoot, exporterTree.Options);
+            //    WriteTree(exporterTree);
+            //}
         }
 
         private static SyntaxTree GetOrCreateTree(SimpleTypeDef typeDef, Func<SimpleTypeDef, SyntaxTree> createTreeFunc, string fileNamePostfix)

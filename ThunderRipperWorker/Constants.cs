@@ -7,15 +7,12 @@ namespace ThunderRipperWorker
 {
     public static class Constants
     {
-        public static readonly Dictionary<long, Type> TypeIDToType = new Dictionary<long, Type>
+        public static readonly Dictionary<int, Type> TypeIDToType = new Dictionary<int, Type>
         {
+        	[0] = typeof(Object_V1),
+        	[0] = typeof(Object_V1),
+        	[1111111111] = typeof(int),
+        	[1111111111] = typeof(int)
         };
-		public static readonly UnityVersion[] SupportedVersions = new UnityVersion[]
-
-		{
-			new UnityVersion("2018.4.16f1"),
-			new UnityVersion("2018.4.16f1"),
-			new UnityVersion("2018.4.16f1")
-		};
     }
 }
