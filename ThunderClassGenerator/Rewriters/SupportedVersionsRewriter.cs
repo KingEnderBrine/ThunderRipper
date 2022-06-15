@@ -3,6 +3,7 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using System;
 using System.Linq;
+using ThunderClassGenerator.Utilities;
 using ThunderRipperShared.Utilities;
 using SF = Microsoft.CodeAnalysis.CSharp.SyntaxFactory;
 
@@ -42,7 +43,7 @@ namespace ThunderClassGenerator.Rewriters
                 return base.VisitInitializerExpression(node);
             }
 
-            var index = node.Expressions.LastIndexOf(e => e is ObjectCreationExpressionSyntax objectCreation && (GetVersionFromCreationExpression(objectCreation) < version)) + 1;
+            var index = node.Expressions.LastIndexOf(e => e is ObjectCreationExpressionSyntax objectCreation && (SupportedVersionsUtilities.GetVersionFromCreationExpression(objectCreation) < version)) + 1;
 
             return node.WithExpressions(SF.SeparatedList(node.Expressions.Insert(index, CreateVersionExpression(version))));
         }
@@ -83,17 +84,6 @@ namespace ThunderClassGenerator.Rewriters
                     }))
                 , default)
                 .NormalizeWhitespace();
-        }
-
-        private static UnityVersion GetVersionFromCreationExpression(ObjectCreationExpressionSyntax expression)
-        {
-            var firstArgument = expression.ArgumentList.Arguments.FirstOrDefault()?.Expression;
-            if (firstArgument is not LiteralExpressionSyntax literal || !literal.Token.IsKind(SyntaxKind.StringLiteralToken))
-            {
-                return default;
-            }
-
-            return new UnityVersion(literal.Token.ValueText);
         }
     }
 }

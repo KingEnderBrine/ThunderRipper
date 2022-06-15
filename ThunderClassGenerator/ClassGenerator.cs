@@ -7,6 +7,7 @@ using System.Linq;
 using System.Text.Json;
 using ThunderClassGenerator.Generators;
 using ThunderClassGenerator.Rewriters;
+using ThunderClassGenerator.Utilities;
 using ThunderRipperShared.Utilities;
 
 namespace ThunderClassGenerator
@@ -72,24 +73,30 @@ namespace ThunderClassGenerator
             //    }
             //}
 
-            /*
-            foreach (var file in Directory.EnumerateFiles(@"D:\RoR2 Modding\Repos\TypeTreeDumps\InfoJson").OrderBy(f => new UnityVersion(Path.GetFileNameWithoutExtension(f))))
-            {
-                var info = JsonSerializer.Deserialize<Info>(File.ReadAllText(file));
-                var releaseTypes = new TypesReader().ReadTypes(info.Classes, true);
-
-                info = JsonSerializer.Deserialize<Info>(File.ReadAllText(file));
-                var editorTypes = new TypesReader().ReadTypes(info.Classes, false);
-            }
-            */
-
+            
+            //foreach (var file in Directory.EnumerateFiles(@"D:\RoR2 Modding\Repos\TypeTreeDumps\InfoJson").OrderBy(f => new UnityVersion(Path.GetFileNameWithoutExtension(f))))
+            //{
+            //    var info = JsonSerializer.Deserialize<Info>(File.ReadAllText(file));
+            //    var releaseTypes = new TypesReader().ReadTypes(info.Classes, true);
+            //    
+            //    info = JsonSerializer.Deserialize<Info>(File.ReadAllText(file));
+            //    var editorTypes = new TypesReader().ReadTypes(info.Classes, false);
+            //}
+            
+            var constantsPath = Path.Combine(Strings.SolutionFolder, Strings.DefaultNamespace, "Constants.cs");
+            var constantsTree = CSharpSyntaxTree.ParseText(File.ReadAllText(constantsPath), new CSharpParseOptions(GeneratorUtilities.LangVersion), constantsPath);
+            var constantsRoot = constantsTree.GetRoot();
+            var supportedVersions = SupportedVersionsUtilities.GetSupportedVersionsFromRoot(constantsRoot);
+            
             var info = JsonSerializer.Deserialize<Info>(File.ReadAllText(@"D:\info.json"));
             var types = new TypesReader().ReadTypes(info.Classes, true);
-            var typeMappingPath = Path.Combine(Strings.SolutionFolder, Strings.DefaultNamespace, "Constants.cs");
-            var typeMappingTree = CSharpSyntaxTree.ParseText(File.ReadAllText(typeMappingPath), new CSharpParseOptions(GeneratorUtilities.LangVersion), typeMappingPath);
-            var typeMappingRoot = new TypeMappingRewriter(new UnityVersion(info.Version), types).Visit(typeMappingTree.GetRoot());
-            typeMappingTree = typeMappingTree.WithRootAndOptions(typeMappingRoot, typeMappingTree.Options);
-            WriteTree(typeMappingTree);
+            var newVersion = new UnityVersion(info.Version);
+            
+            constantsRoot = new TypeMappingRewriter(types, newVersion, supportedVersions).Visit(constantsRoot);
+            constantsRoot = new SupportedVersionsRewriter(newVersion).Visit(constantsRoot);
+            
+            constantsTree = constantsTree.WithRootAndOptions(constantsRoot, constantsTree.Options);
+            WriteTree(constantsTree);
 
             //foreach (var file in Directory.EnumerateFiles(@"D:\RoR2 Modding\Repos\TypeTreeDumps\InfoJson").OrderBy(f => Random.Shared.Next(500)))
             //{
