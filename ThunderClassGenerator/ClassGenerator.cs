@@ -84,7 +84,7 @@ namespace ThunderClassGenerator
             //}
             
             var constantsPath = Path.Combine(Strings.SolutionFolder, Strings.DefaultNamespace, "Constants.cs");
-            var constantsTree = CSharpSyntaxTree.ParseText(File.ReadAllText(constantsPath), new CSharpParseOptions(GeneratorUtilities.LangVersion), constantsPath);
+            var constantsTree = CSharpSyntaxTree.ParseText(File.ReadAllText(constantsPath), new CSharpParseOptions(GeneratorUtilities.LangVersion, preprocessorSymbols: new[] { "CG" }), constantsPath);
             var constantsRoot = constantsTree.GetRoot();
             var supportedVersions = SupportedVersionsUtilities.GetSupportedVersionsFromRoot(constantsRoot);
             

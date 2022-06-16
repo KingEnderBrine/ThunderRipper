@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using ThunderClassGenerator.Utilities;
 using ThunderRipperShared.Utilities;
 using SF = Microsoft.CodeAnalysis.CSharp.SyntaxFactory;
 
@@ -88,6 +89,11 @@ namespace ThunderClassGenerator.Rewriters
             if (expression == null)
             {
                 return default;
+            }
+
+            if (expression.GetLeadingTrivia().FirstOrDefault(t => t.IsKind(SyntaxKind.IfDirectiveTrivia)).GetStructure() is IfDirectiveTriviaSyntax ifTrivia)
+            {
+                var ranges = IfDirectiveUtilities.GetDirectiveVersions(ifTrivia);
             }
 
             var leftFirstArgument = (expression.Left as ImplicitElementAccessSyntax)?.ArgumentList.Arguments.FirstOrDefault()?.Expression;
