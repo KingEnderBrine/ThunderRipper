@@ -1,12 +1,7 @@
 ﻿using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using System;
-using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using SF = Microsoft.CodeAnalysis.CSharp.SyntaxFactory;
 
 namespace ThunderClassGenerator.Rewriters
@@ -28,18 +23,13 @@ namespace ThunderClassGenerator.Rewriters
             return base.VisitArrayCreationExpression(node.WithType(node.Type.WithoutTrivia()));
         }
 
-        public override SyntaxNode VisitObjectCreationExpression(ObjectCreationExpressionSyntax node)
-        {
-            return base.VisitObjectCreationExpression(node.WithType(node.Type.WithoutTrivia()));
-        }
-
         public override SyntaxNode VisitInitializerExpression(InitializerExpressionSyntax node)
         {
             return node
                 .WithoutTrivia()
-                .WithOpenBraceToken(SF.Token(SyntaxKind.OpenBraceToken).WithLeadingTrivia(fieldIndentation.Insert(0, SF.LineFeed)))
-                .WithCloseBraceToken(SF.Token(SyntaxKind.CloseBraceToken).WithLeadingTrivia(fieldIndentation.Insert(0, SF.LineFeed)))
-                .WithExpressions(SF.SeparatedList(node.Expressions.Select(e => e.WithoutTrivia().WithLeadingTrivia(fieldIndentation.Insert(0, SF.LineFeed).Add(SF.Tab)))));
+                .WithOpenBraceToken(SF.Token(SyntaxKind.OpenBraceToken).WithLeadingTrivia(fieldIndentation.Prepend(SF.LineFeed)).WithTrailingTrivia(fieldIndentation.Prepend(SF.LineFeed)))
+                .WithCloseBraceToken(SF.Token(SyntaxKind.CloseBraceToken))
+                .WithExpressions(SF.SeparatedList(node.Expressions.Select(e => e.WithoutTrivia()), node.Expressions.Select(e => SF.Token(SyntaxKind.CommaToken).WithLeadingTrivia(SF.Tab).WithTrailingTrivia(fieldIndentation.Prepend(SF.LineFeed)))));
         }
 
         public override SyntaxNode VisitMethodDeclaration(MethodDeclarationSyntax node) => node;

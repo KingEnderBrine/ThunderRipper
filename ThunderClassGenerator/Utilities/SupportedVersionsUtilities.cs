@@ -20,7 +20,7 @@ namespace ThunderClassGenerator.Utilities
                 return Array.Empty<UnityVersion>();
             }
 
-            return field.DescendantNodes().OfType<ObjectCreationExpressionSyntax>().Select(GetVersionFromCreationExpression).ToArray();
+            return field.DescendantNodes().OfType<ObjectCreationExpressionSyntax>().Select(GetVersionFromCreationExpression).OrderBy(v => v).ToArray();
         }
 
         public static UnityVersion GetVersionFromCreationExpression(ObjectCreationExpressionSyntax expression)

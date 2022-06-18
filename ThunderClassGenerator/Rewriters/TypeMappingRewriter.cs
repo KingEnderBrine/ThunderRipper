@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using ThunderClassGenerator.Utilities;
 using ThunderRipperShared.Utilities;
@@ -14,6 +15,7 @@ namespace ThunderClassGenerator.Rewriters
 {
     public class TypeMappingRewriter : CSharpSyntaxRewriter
     {
+        private static readonly Regex versionRegex = new Regex(@".*?_V(?'version'\d+)", RegexOptions.Compiled);
         private readonly IEnumerable<SimpleTypeDef> types;
         private readonly UnityVersion version;
         private readonly IEnumerable<UnityVersion> supportedVersions;
@@ -38,7 +40,7 @@ namespace ThunderClassGenerator.Rewriters
         {
             if (node.Declaration.Variables[0].Identifier.ValueText == "TypeIDToType")
             {
-                return new MultilineCollectionRewriter().Visit(base.VisitFieldDeclaration(node));
+                return base.VisitFieldDeclaration(node);
             }
 
             return node;
@@ -46,9 +48,26 @@ namespace ThunderClassGenerator.Rewriters
 
         public override SyntaxNode VisitInitializerExpression(InitializerExpressionSyntax node)
         {
-            var existingMappings = node.Expressions.Select(e => GetMappingFromCreationExpression(e as AssignmentExpressionSyntax)).ToArray();
-            var index = 0;
-            return node.WithExpressions(SF.SeparatedList(node.Expressions.Insert(index, CreateRowExpression(types.FirstOrDefault()))));
+            var existingMappings = node.Expressions.Select(e => GetMappingFromCreationExpression(e as AssignmentExpressionSyntax)).Where(m => m != default).ToArray();
+            
+            var updatedMappings = existingMappings.Join(types.Where(t => t.TypeID >= 0), m => (m.Item1, m.Item2), t => (t.TypeID, t.VersionnedName), (m, t) => (m.Item1, m.Item2, IfDirectiveUtilities.RecalculateRanges(m.Item3, version, supportedVersions, true, false))).ToArray();
+            var addedMappings = types.Where(t => t.TypeID >= 0).Select(t => (t.TypeID, t.VersionnedName, Array.Empty<UnityVersionRange>())).ExceptBy(updatedMappings.Select(m => (m.Item1, m.Item2)), m => (m.Item1, m.Item2)).Select(m => (m.Item1, m.Item2, IfDirectiveUtilities.RecalculateRanges(m.Item3, version, supportedVersions, true, true))).ToArray();
+            var notUpdatedMappings = existingMappings.ExceptBy(updatedMappings.Select(m => (m.Item1, m.Item2)), m => (m.Item1, m.Item2)).Select(m => (m.Item1, m.Item2, IfDirectiveUtilities.RecalculateRanges(m.Item3, version, supportedVersions, false, false))).ToArray();
+
+            var expressions = new List<ExpressionSyntax>();
+            var previousHadRanges = false;
+            foreach (var mapping in updatedMappings.Union(notUpdatedMappings).Union(addedMappings).OrderBy(m => m.Item1).ThenBy(m => int.Parse(versionRegex.Match(m.Item2).Groups["version"].Value)))
+            {
+                expressions.Add(CreateRowExpression(mapping.Item1, mapping.Item2, mapping.Item3, previousHadRanges));
+                previousHadRanges = mapping.Item3.Length > 0;
+            }
+            if (previousHadRanges)
+            {
+                node = node.WithCloseBraceToken(SF.Token(SyntaxKind.CloseBraceToken).WithLeadingTrivia(SF.Trivia(SF.EndIfDirectiveTrivia(true)), SF.LineFeed));
+            }
+
+            node = node.WithExpressions(SF.SeparatedList(expressions, expressions.Select(e => SF.Token(SyntaxKind.CommaToken))));
+            return node;
         }
 
         private static FieldDeclarationSyntax CreateField()
@@ -68,36 +87,50 @@ namespace ThunderClassGenerator.Rewriters
                                         default,
                                         SF.InitializerExpression(
                                             SyntaxKind.ObjectInitializerExpression,
-                                            SF.SeparatedList<ExpressionSyntax>()))))
+                                            SF.Token(SyntaxKind.OpenBraceToken).WithTrailingTrivia(SF.LineFeed),
+                                            SF.SeparatedList<ExpressionSyntax>(),
+                                            SF.Token(SyntaxKind.CloseBraceToken)))))
                         })))
-                .NormalizeWhitespace()
                 .WithLeadingTrivia(SF.TriviaList(SF.Tab, SF.Tab))
                 .WithTrailingTrivia(SF.LineFeed);
         }
 
-        private static AssignmentExpressionSyntax CreateRowExpression(SimpleTypeDef type)
+        private static AssignmentExpressionSyntax CreateRowExpression(int typeID, string name, UnityVersionRange[] ranges, bool previousHadRanges)
         {
-            return SF.AssignmentExpression(
-                SyntaxKind.SimpleAssignmentExpression,
-                SF.ImplicitElementAccess(SF.BracketedArgumentList(SF.SeparatedList(new[] { SF.Argument(SF.LiteralExpression(SyntaxKind.NumericLiteralExpression, SF.Literal(type.TypeID)))}))),
-                SF.TypeOfExpression(SF.ParseTypeName(type.VersionnedName)))
-                .NormalizeWhitespace();
+            var expression = SF.AssignmentExpression(
+                    SyntaxKind.SimpleAssignmentExpression,
+                    SF.ImplicitElementAccess(SF.BracketedArgumentList(SF.SeparatedList(new[] { SF.Argument(SF.LiteralExpression(SyntaxKind.NumericLiteralExpression, SF.Literal(typeID))) }))),
+                    SF.TypeOfExpression(SF.ParseTypeName(name)));
+            
+            var leadingTrivia = new List<SyntaxTrivia>();
+            if (previousHadRanges)
+            {
+                leadingTrivia.Add(SF.Trivia(SF.EndIfDirectiveTrivia(true)));
+            }
+
+            if (ranges.Length > 0)
+            {
+                leadingTrivia.Add(SF.Trivia(IfDirectiveUtilities.GetIfDirectiveFromVersionRanges(ranges)));
+            }
+
+            return expression.WithLeadingTrivia(SF.TriviaList(leadingTrivia)).NormalizeWhitespace();
         }
 
-        private static (int, string) GetMappingFromCreationExpression(AssignmentExpressionSyntax expression)
+        private static (int, string, UnityVersionRange[]) GetMappingFromCreationExpression(AssignmentExpressionSyntax expression)
         {
             if (expression == null)
             {
                 return default;
             }
 
+            var ranges = Array.Empty<UnityVersionRange>();
             if (expression.GetLeadingTrivia().FirstOrDefault(t => t.IsKind(SyntaxKind.IfDirectiveTrivia)).GetStructure() is IfDirectiveTriviaSyntax ifTrivia)
             {
-                var ranges = IfDirectiveUtilities.GetDirectiveVersions(ifTrivia);
+                ranges = IfDirectiveUtilities.GetDirectiveVersions(ifTrivia);
             }
 
             var leftFirstArgument = (expression.Left as ImplicitElementAccessSyntax)?.ArgumentList.Arguments.FirstOrDefault()?.Expression;
-            if (leftFirstArgument is not LiteralExpressionSyntax literal || !literal.Token.IsKind(SyntaxKind.NumericLiteralExpression))
+            if (leftFirstArgument is not LiteralExpressionSyntax literal || !literal.Token.IsKind(SyntaxKind.NumericLiteralToken))
             {
                 return default;
             }
@@ -108,7 +141,7 @@ namespace ThunderClassGenerator.Rewriters
                 return default;
             }
 
-            return ((int)literal.Token.Value, typeName);
+            return ((int)literal.Token.Value, typeName, ranges);
         }
     }
 }

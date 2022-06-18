@@ -9,7 +9,7 @@ namespace ThunderRipperShared.Utilities
     [StructLayout(LayoutKind.Explicit)]
     public struct UnityVersion : IEquatable<UnityVersion>, IComparable<UnityVersion>
     {
-        private static readonly Regex versionRegex = new Regex(@"u?(?<major>\d+)[\._](?<minor>\d+)[\._](?<build>\d+)((?<type>[A-Za-z])(?<typeNumber>\d))?", RegexOptions.Compiled);
+        private static readonly Regex versionRegex = new Regex(@"u?(?<major>\d+)[\._](?<minor>\d+)[\._](?<build>\d+)((?<type>[A-Za-z])(?<typeNumber>\d+))?", RegexOptions.Compiled);
         public enum VersionType
         {
             Unknown,

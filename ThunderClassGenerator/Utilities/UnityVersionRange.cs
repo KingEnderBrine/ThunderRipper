@@ -23,6 +23,11 @@ namespace ThunderClassGenerator.Utilities
             this.max = max;
         }
 
+        public bool Contains(UnityVersion version)
+        {
+            return (HasMin || HasMax) && (!HasMin || min <= version) && (!HasMax || version < max);
+        }
+
         private string ToDebugString()
         {
             if (HasMin && HasMax)
@@ -61,6 +66,48 @@ namespace ThunderClassGenerator.Utilities
             }
 
             return 0;
+        }
+
+        public override bool Equals(object obj)
+        {
+            return obj is UnityVersionRange range &&
+                   min.Equals(range.min) &&
+                   max.Equals(range.max);
+        }
+
+        public override int GetHashCode()
+        {
+            return HashCode.Combine(min, max);
+        }
+
+        public static bool operator ==(UnityVersionRange left, UnityVersionRange right)
+        {
+            return left.Equals(right);
+        }
+
+        public static bool operator !=(UnityVersionRange left, UnityVersionRange right)
+        {
+            return !(left == right);
+        }
+
+        public static bool operator <(UnityVersionRange left, UnityVersionRange right)
+        {
+            return left.CompareTo(right) < 0;
+        }
+
+        public static bool operator <=(UnityVersionRange left, UnityVersionRange right)
+        {
+            return left.CompareTo(right) <= 0;
+        }
+
+        public static bool operator >(UnityVersionRange left, UnityVersionRange right)
+        {
+            return left.CompareTo(right) > 0;
+        }
+
+        public static bool operator >=(UnityVersionRange left, UnityVersionRange right)
+        {
+            return left.CompareTo(right) >= 0;
         }
     }
 }
