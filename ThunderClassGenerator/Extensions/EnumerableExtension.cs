@@ -52,5 +52,28 @@ namespace ThunderClassGenerator.Extensions
 
             return default;
         }
+
+        public static bool StartsWith<TValue>(this IEnumerable<TValue> collection, IEnumerable<TValue> other, IEqualityComparer<TValue> comparer = null)
+        {
+            comparer ??= EqualityComparer<TValue>.Default;
+            var firstEnumerator = collection.GetEnumerator();
+            var secondEnumerator = other.GetEnumerator();
+
+            var firstMoved = firstEnumerator.MoveNext();
+            var secondMoved = secondEnumerator.MoveNext();
+
+            while (firstMoved && secondMoved)
+            {
+                if (!comparer.Equals(firstEnumerator.Current, secondEnumerator.Current))
+                {
+                    return false;
+                }
+
+                firstMoved = firstEnumerator.MoveNext();
+                secondMoved = secondEnumerator.MoveNext();
+            }
+
+            return firstMoved;
+        }
     }
 }

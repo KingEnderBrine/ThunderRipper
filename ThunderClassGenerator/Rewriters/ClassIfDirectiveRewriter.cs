@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using ThunderClassGenerator.Utilities;
 using ThunderRipperShared.Utilities;
 using SF = Microsoft.CodeAnalysis.CSharp.SyntaxFactory;
 
@@ -13,26 +14,39 @@ namespace ThunderClassGenerator.Rewriters
 {
     public class ClassIfDirectiveRewriter : CSharpSyntaxRewriter
     {
-        private readonly UnityVersion unityVersion;
+        private readonly UnityVersion version;
         private readonly IEnumerable<UnityVersion> supportedVersions;
-        private readonly SimpleTypeDef typeDef;
+        private readonly bool existsInVersion;
+        private readonly bool isNew;
 
-        public ClassIfDirectiveRewriter(UnityVersion unityVersion, IEnumerable<UnityVersion> supportedVersions, SimpleTypeDef typeDef)
+        public ClassIfDirectiveRewriter(UnityVersion version, IEnumerable<UnityVersion> supportedVersions, bool existsInVersion, bool isNew)
         {
-            this.unityVersion = unityVersion;
+            this.version = version;
             this.supportedVersions = supportedVersions;
-            this.typeDef = typeDef;
+            this.existsInVersion = existsInVersion;
+            this.isNew = isNew;
         }
 
         public override SyntaxNode VisitClassDeclaration(ClassDeclarationSyntax node)
         {
-            var ifDirectives = node.DescendantTrivia(n => false, true).Where(t => t.IsKind(SyntaxKind.IfDirectiveTrivia)).FirstOrDefault();
-            return base.VisitClassDeclaration(node);
-        }
-
-        public override SyntaxNode VisitIfDirectiveTrivia(IfDirectiveTriviaSyntax node)
-        {
-            return base.VisitIfDirectiveTrivia(node);
+            var ifTrivia = node.GetLeadingTrivia().FirstOrDefault(t => t.IsKind(SyntaxKind.IfDirectiveTrivia));
+            var ifDirective = ifTrivia.GetStructure() as IfDirectiveTriviaSyntax;
+            var ranges = IfDirectiveUtilities.GetDirectiveVersions(ifDirective);
+            ranges = IfDirectiveUtilities.RecalculateRanges(ranges, version, supportedVersions, existsInVersion, isNew);
+            if (ranges.Length > 0)
+            {
+                if (ifDirective != null)
+                {
+                    node = node.ReplaceTrivia(ifTrivia, SF.Trivia(IfDirectiveUtilities.GetIfDirectiveFromVersionRanges(ranges)));
+                }
+                else
+                {
+                    node = node
+                        .WithLeadingTrivia(SF.Trivia(IfDirectiveUtilities.GetIfDirectiveFromVersionRanges(ranges)), SF.LineFeed)
+                        .WithTrailingTrivia(SF.Trivia(SF.EndIfDirectiveTrivia(true)), SF.LineFeed);
+                }
+            }
+            return node;
         }
     }
 }

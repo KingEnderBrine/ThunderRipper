@@ -11,6 +11,7 @@ namespace ThunderClassGenerator
     [DebuggerDisplay("{VersionnedName} Component={IsComponent} Generic={IsGeneric}")]
     public class SimpleTypeDef : IChild<SimpleTypeDef>
     {
+        public bool IsRelease { get; set; }
         public string Name { get; set; }
         public string Namespace { get; set; }
         public string Base { get; set; }

@@ -116,7 +116,7 @@ namespace ThunderClassGenerator.Generators
                 return typeDef.Namespace;
             }
 
-            var outputNamespace = typeDef.IsComponent ? Strings.OutputComponentNamespace : Strings.OutputClassNamespace;
+            var outputNamespace = $"{Strings.DefaultNamespace}.{(typeDef.IsRelease ? Strings.Release : Strings.Editor)}.{(typeDef.IsComponent ? Strings.UnityComponents : Strings.UnityClasses)}";
             if (string.IsNullOrWhiteSpace(typeDef.Namespace))
             {
                 return outputNamespace;

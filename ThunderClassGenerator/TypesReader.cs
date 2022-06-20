@@ -71,7 +71,7 @@ namespace ThunderClassGenerator
             var typePermutations = GatherPermutations(classes, release);
             FixPermutations(typePermutations);
 
-            var types = CreateTypesFromPermutations(typePermutations);
+            var types = CreateTypesFromPermutations(typePermutations, release);
             AssignBaseTypes(types);
 
             var inverseOrderTypes = GetTypesToProcess(types, classes, release);
@@ -123,7 +123,7 @@ namespace ThunderClassGenerator
             }
         }
 
-        private static Dictionary<(string, short, bool), SimpleTypeDef> CreateTypesFromPermutations(Dictionary<(string, short, bool), TypePermutations> typePermutations)
+        private static Dictionary<(string, short, bool), SimpleTypeDef> CreateTypesFromPermutations(Dictionary<(string, short, bool), TypePermutations> typePermutations, bool release)
         {
             var types = new Dictionary<(string, short, bool), SimpleTypeDef>();
             
@@ -133,6 +133,7 @@ namespace ThunderClassGenerator
                 var firstNode = permutations.Nodes.FirstOrDefault();
                 var typeDef = types[row.Key] = new SimpleTypeDef
                 {
+                    IsRelease = release,
                     Base = permutations.Class?.Base ?? string.Empty,
                     IsAbstract = permutations.Class?.IsAbstract ?? false,
                     Namespace = permutations.Class?.Namespace ?? string.Empty,

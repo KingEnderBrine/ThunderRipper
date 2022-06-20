@@ -9,6 +9,7 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
+using ThunderClassGenerator.Extensions;
 using ThunderClassGenerator.Generators;
 using ThunderClassGenerator.Rewriters;
 using ThunderClassGenerator.Utilities;
@@ -90,7 +91,10 @@ namespace ThunderClassGenerator
             MSBuildLocator.RegisterDefaults();
             using (var workspace = MSBuildWorkspace.Create())
             {
-                var solution = await workspace.OpenSolutionAsync(Path.Combine(Strings.SolutionFolder, "ThunderRipper.sln"));
+                //var solution = await workspace.OpenSolutionAsync(Path.Combine(Strings.SolutionFolder, "ThunderRipper.sln"));
+                var project = await workspace.OpenProjectAsync(Path.Combine(Strings.SolutionFolder, Strings.DefaultNamespace, "ThunderRipperWorker.csproj"));
+                project = project.WithParseOptions(new CSharpParseOptions(GeneratorUtilities.LangVersion, preprocessorSymbols: new[] { "CG" }));
+                var releasePath = new[] { Strings.DefaultNamespace, Strings.Release };
 
                 foreach (var file in Directory.EnumerateFiles(@"D:\RoR2 Modding\Repos\TypeTreeDumps\InfoJson").OrderBy(f => Random.Shared.Next(500)))
                 {
@@ -103,7 +107,21 @@ namespace ThunderClassGenerator
                     var types = new TypesReader().ReadTypes(info.Classes, true);
                     var newVersion = new UnityVersion(info.Version);
 
-                    constantsRoot = new TypeMappingRewriter(types, newVersion, supportedVersions).Visit(constantsRoot);
+                    //var existingTypes = new HashSet<SimpleTypeDef>();
+                    //foreach (var document in project.Documents.Where(d => d.Folders.StartsWith(releasePath)))
+                    //{
+                    //    var type = types.FirstOrDefault(t => document.Name.StartsWith(t.VersionnedName));
+                    //    if (type != null)
+                    //    {
+                    //        existingTypes.Add(type);
+                    //
+                    //        var root = await document.GetSyntaxRootAsync();
+                    //        root = new ClassIfDirectiveRewriter(newVersion, supportedVersions, true, false).Visit(root);
+                    //        Formatter.FormatAsync(document.WithSyntaxRoot(root));
+                    //    }
+                    //}
+
+                    //constantsRoot = new TypeMappingRewriter(types, newVersion, supportedVersions).Visit(constantsRoot);
                     constantsRoot = new SupportedVersionsRewriter(newVersion).Visit(constantsRoot);
 
                     constantsRoot = Formatter.Format(constantsRoot, workspace);
