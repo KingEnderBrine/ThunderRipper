@@ -1,6 +1,7 @@
 ﻿using Microsoft.Build.Locator;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Formatting;
 using Microsoft.CodeAnalysis.MSBuild;
 using System;
@@ -8,6 +9,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using ThunderClassGenerator.Extensions;
 using ThunderClassGenerator.Generators;
@@ -93,42 +95,102 @@ namespace ThunderClassGenerator
             {
                 //var solution = await workspace.OpenSolutionAsync(Path.Combine(Strings.SolutionFolder, "ThunderRipper.sln"));
                 var project = await workspace.OpenProjectAsync(Path.Combine(Strings.SolutionFolder, Strings.DefaultNamespace, "ThunderRipperWorker.csproj"));
+                var originalParseOptions = project.ParseOptions;
                 project = project.WithParseOptions(new CSharpParseOptions(GeneratorUtilities.LangVersion, preprocessorSymbols: new[] { "CG" }));
-                var releasePath = new[] { Strings.DefaultNamespace, Strings.Release };
+                var componentsPath = new[] { Strings.Release, Strings.UnityComponents };
+                var classesPath = new[] { Strings.Release, Strings.UnityClasses };
+
+                var constantsId = project.Documents.FirstOrDefault(d => d.Folders.Count == 0 && d.Name == "Constants.cs").Id;
 
                 foreach (var file in Directory.EnumerateFiles(@"D:\RoR2 Modding\Repos\TypeTreeDumps\InfoJson").OrderBy(f => Random.Shared.Next(500)))
                 {
-                    var constantsPath = Path.Combine(Strings.SolutionFolder, Strings.DefaultNamespace, "Constants.cs");
-                    var constantsTree = CSharpSyntaxTree.ParseText(File.ReadAllText(constantsPath), new CSharpParseOptions(GeneratorUtilities.LangVersion, preprocessorSymbols: new[] { "CG" }), constantsPath);
-                    var constantsRoot = constantsTree.GetRoot();
-                    var supportedVersions = SupportedVersionsUtilities.GetSupportedVersionsFromRoot(constantsRoot);
-
                     var info = JsonSerializer.Deserialize<Info>(File.ReadAllText(file));
-                    var types = new TypesReader().ReadTypes(info.Classes, true);
                     var newVersion = new UnityVersion(info.Version);
 
-                    //var existingTypes = new HashSet<SimpleTypeDef>();
-                    //foreach (var document in project.Documents.Where(d => d.Folders.StartsWith(releasePath)))
-                    //{
-                    //    var type = types.FirstOrDefault(t => document.Name.StartsWith(t.VersionnedName));
-                    //    if (type != null)
-                    //    {
-                    //        existingTypes.Add(type);
-                    //
-                    //        var root = await document.GetSyntaxRootAsync();
-                    //        root = new ClassIfDirectiveRewriter(newVersion, supportedVersions, true, false).Visit(root);
-                    //        Formatter.FormatAsync(document.WithSyntaxRoot(root));
-                    //    }
-                    //}
+                    var constantsDocument = project.GetDocument(constantsId);
+                    var constantsRoot = await constantsDocument.GetSyntaxRootAsync();
+                    
+                    var supportedVersions = SupportedVersionsUtilities.GetSupportedVersionsFromRoot(constantsRoot);
+                    if (supportedVersions.Contains(newVersion))
+                    {
+                        continue;
+                    }
 
-                    //constantsRoot = new TypeMappingRewriter(types, newVersion, supportedVersions).Visit(constantsRoot);
+                    var types = new TypesReader().ReadTypes(info.Classes, true);
+                    
+                    constantsRoot = new TypeMappingRewriter(types, newVersion, supportedVersions).Visit(constantsRoot);
                     constantsRoot = new SupportedVersionsRewriter(newVersion).Visit(constantsRoot);
+                    constantsDocument = await Formatter.FormatAsync(constantsDocument.WithSyntaxRoot(constantsRoot));
+                    project = constantsDocument.Project;
 
-                    constantsRoot = Formatter.Format(constantsRoot, workspace);
+                    var existingTypes = new HashSet<SimpleTypeDef>();
+                    foreach (var documentId in project.DocumentIds)
+                    {
+                        var document = project.GetDocument(documentId);
+                        var isComponent = document.Folders.StartsWith(componentsPath);
+                        var isClass = !isComponent && document.Folders.StartsWith(classesPath);
 
-                    constantsTree = constantsTree.WithRootAndOptions(constantsRoot, constantsTree.Options);
-                    WriteTree(constantsTree);
+                        if (!isComponent && !isClass)
+                        {
+                            continue;
+                        }
+
+                        var type = types.FirstOrDefault(t => t.IsComponent == isComponent && (document.Name == t.VersionnedName + ".cs" || document.Name.StartsWith(t.VersionnedName + '_')));
+                        existingTypes.Add(type);
+              
+                        var root = await document.GetSyntaxRootAsync();
+                        root = new ClassIfDirectiveRewriter(newVersion, supportedVersions, type != null, false).Visit(root);
+                        if (document.Name.EndsWith("_ReadBinary.cs"))
+                        {
+                            //TODO: update binary
+                        }
+                        else if (document.Name.EndsWith("_ExportYAML.cs"))
+                        {
+                            //TODO: update YAML
+                        }
+                        else
+                        {
+                            if (type != null)
+                            {
+                                root = new FieldsRewriter(type, newVersion, supportedVersions, false).Visit(root);
+                            }
+                        }
+                        document = await Formatter.FormatAsync(document.WithSyntaxRoot(root));
+                        project = document.Project;
+                    }
+
+                    var projectDir = Path.GetDirectoryName(project.FilePath);
+                    foreach (var type in types.Except(existingTypes))
+                    {
+                        var folders = GeneratorUtilities.GetNamespaceString(type).Split('.').Skip(1).Append(type.Name).ToArray();
+                        
+                        var mainDocument = await CreateDocument(type, true, "", folders, new FieldsRewriter(type, newVersion, supportedVersions, true), new ClassIfDirectiveRewriter(newVersion, supportedVersions, true, true));
+                        project = mainDocument.Project;
+
+                        //var readBinaryDocument = await CreateDocument(type, false, "_ReadBinary", folders, new ClassIfDirectiveRewriter(newVersion, supportedVersions, true, true));
+                        //project = readBinaryDocument.Project;
+                        //
+                        //var exportYAMLDocument = await CreateDocument(type, false, "_ExportYAML", folders, new ClassIfDirectiveRewriter(newVersion, supportedVersions, true, true));
+                        //project = exportYAMLDocument.Project;
+
+                        async Task<Document> CreateDocument(SimpleTypeDef type, bool mainDocument, string postfix, string[] folders, params CSharpSyntaxRewriter[] rewriters)
+                        {
+                            var filePath = Path.Combine(projectDir, Path.Combine(folders), $"{type.VersionnedName}{postfix}.cs");
+
+                            var root = MainClassGenerator.CreateRoot(type, mainDocument);
+                            foreach (var rewriter in rewriters)
+                            {
+                                root = rewriter.Visit(root);
+                            }
+
+                            var document = project.AddDocument(Path.GetFileName(filePath), root, folders, filePath);
+                            return await Formatter.FormatAsync(document.WithSyntaxRoot(root));
+                        }
+                    }
+
+                    //break;
                 }
+                workspace.TryApplyChanges(project.WithParseOptions(originalParseOptions).Solution);
             }
 
             //foreach (var file in Directory.EnumerateFiles(@"D:\RoR2 Modding\Repos\TypeTreeDumps\InfoJson").OrderBy(f => Random.Shared.Next(500)))
@@ -141,14 +203,16 @@ namespace ThunderClassGenerator
             //    WriteTree(supportedVersionsTree);
             //}
 
+            //var info = JsonSerializer.Deserialize<Info>(File.ReadAllText(@"D:\info.json"));
+            //var types = new TypesReader().ReadTypes(info.Classes, true);
             //foreach (var typeDef in types)
             //{
             //    var tree = GetOrCreateTree(typeDef, (typeDef) => MainClassGenerator.CreateTree(typeDef, true), "");
-            //    var root = tree.GetRoot();
+            //    var root = tree.GetRoot().NormalizeWhitespace();
             //    root = new FieldsRewriter(typeDef, new UnityVersion(info.Version)).Visit(root);
             //    tree = tree.WithRootAndOptions(root, tree.Options);
             //    WriteTree(tree);
-            //    
+            //
             //    var readerTree = ReaderClassGenerator.GetOrCreateTree(typeDef);
             //    var readerRoot = readerTree.GetRoot().NormalizeWhitespace();
             //    readerTree = readerTree.WithRootAndOptions(readerRoot, readerTree.Options);

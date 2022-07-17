@@ -7,6 +7,7 @@ using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using ThunderClassGenerator.Generators;
 using ThunderClassGenerator.Utilities;
 using ThunderRipperShared.Utilities;
 using SF = Microsoft.CodeAnalysis.CSharp.SyntaxFactory;
@@ -25,6 +26,18 @@ namespace ThunderClassGenerator.Rewriters
             this.types = types;
             this.version = version;
             this.supportedVersions = supportedVersions;
+        }
+
+        public override SyntaxNode VisitCompilationUnit(CompilationUnitSyntax node)
+        {
+            var usings = node.Usings.Select(u => u.Name.ToString());
+            var additionalUsings = types
+                .Select(t => GeneratorUtilities.GetNamespaceString(t))
+                .Distinct()
+                .Where(n => !usings.Contains(n))
+                .Select(u => SF.UsingDirective(SF.ParseName(u)))
+                .ToArray();
+            return base.VisitCompilationUnit(node.AddUsings(additionalUsings));
         }
 
         public override SyntaxNode VisitClassDeclaration(ClassDeclarationSyntax node)
@@ -49,10 +62,11 @@ namespace ThunderClassGenerator.Rewriters
         public override SyntaxNode VisitInitializerExpression(InitializerExpressionSyntax node)
         {
             var existingMappings = node.Expressions.Select(e => GetMappingFromCreationExpression(e as AssignmentExpressionSyntax)).Where(m => m != default).ToArray();
-            
-            var updatedMappings = existingMappings.Join(types.Where(t => t.TypeID >= 0), m => (m.Item1, m.Item2), t => (t.TypeID, t.VersionnedName), (m, t) => (m.Item1, m.Item2, IfDirectiveUtilities.RecalculateRanges(m.Item3, version, supportedVersions, true, false))).ToArray();
-            var addedMappings = types.Where(t => t.TypeID >= 0).Select(t => (t.TypeID, t.VersionnedName, Array.Empty<UnityVersionRange>())).ExceptBy(updatedMappings.Select(m => (m.Item1, m.Item2)), m => (m.Item1, m.Item2)).Select(m => (m.Item1, m.Item2, IfDirectiveUtilities.RecalculateRanges(m.Item3, version, supportedVersions, true, true))).ToArray();
-            var notUpdatedMappings = existingMappings.ExceptBy(updatedMappings.Select(m => (m.Item1, m.Item2)), m => (m.Item1, m.Item2)).Select(m => (m.Item1, m.Item2, IfDirectiveUtilities.RecalculateRanges(m.Item3, version, supportedVersions, false, false))).ToArray();
+            var components = types.Where(t => t.TypeID >= 0).ToArray();
+
+            var updatedMappings = existingMappings.Join(components, WithoutRanges, WithoutRanges, (m, t) => (m.Item1, m.Item2, IfDirectiveUtilities.RecalculateRanges(m.Item3, version, supportedVersions, true, false))).ToArray();
+            var addedMappings = components.ExceptBy(updatedMappings.Select(WithoutRanges), WithoutRanges).Select(m => (m.TypeID, m.VersionnedName, IfDirectiveUtilities.RecalculateRanges(Array.Empty<UnityVersionRange>(), version, supportedVersions, true, true))).ToArray();
+            var notUpdatedMappings = existingMappings.ExceptBy(updatedMappings.Select(WithoutRanges), WithoutRanges).Select(m => (m.Item1, m.Item2, IfDirectiveUtilities.RecalculateRanges(m.Item3, version, supportedVersions, false, false))).ToArray();
 
             var expressions = new List<ExpressionSyntax>();
             var previousHadRanges = false;
@@ -143,5 +157,8 @@ namespace ThunderClassGenerator.Rewriters
 
             return ((int)literal.Token.Value, typeName, ranges);
         }
+
+        private static (int, string) WithoutRanges((int, string, UnityVersionRange[]) item) => (item.Item1, item.Item2);
+        private static (int, string) WithoutRanges(SimpleTypeDef item) => (item.TypeID, item.VersionnedName);
     }
 }

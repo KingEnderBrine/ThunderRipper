@@ -73,7 +73,73 @@ namespace ThunderClassGenerator.Extensions
                 secondMoved = secondEnumerator.MoveNext();
             }
 
-            return firstMoved;
+            return firstMoved || (firstMoved == secondMoved);
+        }
+
+        public static IEnumerable<TValue> Insert<TValue>(this IEnumerable<TValue> collection, TValue item, int index)
+        {
+            if (index < 0)
+            {
+                throw new IndexOutOfRangeException();
+            }
+
+            var i = 0;
+            
+            using var enumerator = collection.GetEnumerator();
+            while (enumerator.MoveNext())
+            {
+                if (i == index)
+                {
+                    yield return item;
+                }
+                yield return enumerator.Current;
+                i++;
+            }
+
+            if (index == i)
+            {
+                yield return item;
+            }
+            else if (index > i)
+            {
+                throw new IndexOutOfRangeException();
+            }
+        }
+
+        public static IEnumerable<TValue> InsertRange<TValue>(this IEnumerable<TValue> collection, IEnumerable<TValue> other, int index)
+        {
+            if (index < 0)
+            {
+                throw new IndexOutOfRangeException();
+            }
+
+            var i = 0;
+
+            using var enumerator = collection.GetEnumerator();
+            while (enumerator.MoveNext())
+            {
+                if (i == index)
+                {
+                    foreach (var item in other)
+                    {
+                        yield return item;
+                    }
+                }
+                yield return enumerator.Current;
+                i++;
+            }
+
+            if (index == i)
+            {
+                foreach (var item in other)
+                {
+                    yield return item;
+                }
+            }
+            else if (index > i)
+            {
+                throw new IndexOutOfRangeException();
+            }
         }
     }
 }

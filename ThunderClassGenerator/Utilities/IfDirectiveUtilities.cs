@@ -16,7 +16,7 @@ namespace ThunderClassGenerator.Utilities
         public static UnityVersionRange[] GetDirectiveVersions(IfDirectiveTriviaSyntax ifDirective)
         {
             var ranges = new List<UnityVersionRange>();
-            var current = ifDirective.Condition;
+            var current = ifDirective?.Condition;
             while (current is BinaryExpressionSyntax binaryExpression)
             {
                 if (binaryExpression.Right is ParenthesizedExpressionSyntax parenthesizedExpression)
@@ -205,7 +205,7 @@ namespace ThunderClassGenerator.Utilities
                 condition = SF.BinaryExpression(SyntaxKind.LogicalOrExpression, condition, GetNodeForVersionRange(range));
             }
 
-            return SF.IfDirectiveTrivia(condition, true, true, true);
+            return SF.IfDirectiveTrivia(condition, true, true, true).WithTrailingTrivia(SF.LineFeed);
         }
 
         private static ExpressionSyntax GetNodeForVersionRange(UnityVersionRange range)

@@ -8,22 +8,23 @@ using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using ThunderRipperShared.Assets;
+using ThunderRipperShared.YAML;
 using SF = Microsoft.CodeAnalysis.CSharp.SyntaxFactory;
 
 namespace ThunderClassGenerator.Generators
 {
     public class MainClassGenerator
     {
-        public static SyntaxTree CreateTree(SimpleTypeDef typeDef, bool mainFile)
+        public static SyntaxNode CreateRoot(SimpleTypeDef typeDef, bool mainFile)
         {
-            var root = SF.CompilationUnit(default, GeneratorUtilities.GetUsings(typeDef), default, GetNamespaceMember(typeDef, mainFile));
-            return CSharpSyntaxTree.Create(root, new CSharpParseOptions(GeneratorUtilities.LangVersion));
+            return SF.CompilationUnit(default, GeneratorUtilities.GetUsings(typeDef), default, GetNamespaceMember(typeDef, mainFile));
         }
 
         private static SyntaxList<MemberDeclarationSyntax> GetNamespaceMember(SimpleTypeDef typeDef, bool mainFile)
         {
-            var @class = mainFile ?
-                SF.ClassDeclaration(default, GetClassModifiers(typeDef), SF.Identifier(typeDef.VersionnedName), GetTypeParameters(typeDef), GetBase(typeDef), GetClassConstraints(typeDef), GetFields(typeDef))
+            var @class = mainFile 
+                ? SF.ClassDeclaration(default, GetClassModifiers(typeDef), SF.Identifier(typeDef.VersionnedName), GetTypeParameters(typeDef), GetBase(typeDef), GetClassConstraints(typeDef), GetMembers(typeDef))
                 : SF.ClassDeclaration(default, GetClassModifiers(typeDef), SF.Identifier(typeDef.VersionnedName), GetTypeParameters(typeDef), default, default, default);
             var @namespace = SF.NamespaceDeclaration(GeneratorUtilities.GetNamespaceIdentifier(typeDef), default, default, SF.List(new MemberDeclarationSyntax[] { @class }));
             
@@ -37,19 +38,18 @@ namespace ThunderClassGenerator.Generators
             {
                 for (var i = 0; i < typeDef.GenericCount; i++)
                 {
-                    constraints.Add(SF.TypeParameterConstraintClause(SF.IdentifierName($"T{i + 1}"), SF.SeparatedList(new TypeParameterConstraintSyntax[] { SF.TypeConstraint(SF.ParseTypeName("IBinaryReadable")), SF.TypeConstraint(SF.ParseTypeName("IYAMLExportable")), SF.ConstructorConstraint() })));
+                    constraints.Add(SF.TypeParameterConstraintClause(SF.IdentifierName($"T{i + 1}"), SF.SeparatedList(new TypeParameterConstraintSyntax[] { SF.TypeConstraint(SF.ParseTypeName(nameof(IBinaryReadable))), SF.TypeConstraint(SF.ParseTypeName(nameof(IYAMLExportable))), SF.ConstructorConstraint() })));
                 }
             }
 
             return SF.List(constraints);
         }
 
-        private static SyntaxList<MemberDeclarationSyntax> GetFields(SimpleTypeDef typeDef)
+        private static SyntaxList<MemberDeclarationSyntax> GetMembers(SimpleTypeDef typeDef)
         {
-            var members = new List<MemberDeclarationSyntax>();
-
-            members.Add(
-                    SF.PropertyDeclaration(
+            var members = new List<MemberDeclarationSyntax>
+            {
+                SF.PropertyDeclaration(
                         default,
                         SF.TokenList(SF.Token(SyntaxKind.PublicKeyword), SF.Token(SyntaxKind.OverrideKeyword)),
                         SF.ParseTypeName("int"),
@@ -58,53 +58,23 @@ namespace ThunderClassGenerator.Generators
                         default,
                         SF.ArrowExpressionClause(SF.LiteralExpression(SyntaxKind.NumericLiteralExpression, SF.Literal(typeDef.Version))),
                         default)
-                    .WithSemicolonToken(SF.Token(SyntaxKind.SemicolonToken))
-                    .WithTrailingTrivia(SF.LineFeed));
-
-            members.Add(
-                    SF.PropertyDeclaration(
+                    .WithSemicolonToken(SF.Token(SyntaxKind.SemicolonToken)),
+                SF.PropertyDeclaration(
                         default,
                         SF.TokenList(SF.Token(SyntaxKind.PublicKeyword), SF.Token(SyntaxKind.OverrideKeyword)),
-                        SF.ParseTypeName("MappingStyle"),
+                        SF.ParseTypeName(nameof(MappingStyle)),
                         default,
                         SF.Identifier("MappingStyle"),
                         default,
-                        SF.ArrowExpressionClause(SF.MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression, SF.ParseTypeName("MappingStyle"), SF.IdentifierName(typeDef.FlowMapping ? "Flow" : "Block"))),
+                        SF.ArrowExpressionClause(SF.MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression, SF.ParseTypeName(nameof(MappingStyle)), SF.IdentifierName(typeDef.FlowMapping ? "Flow" : "Block"))),
                         default)
                     .WithSemicolonToken(SF.Token(SyntaxKind.SemicolonToken))
-                    .WithTrailingTrivia(SF.LineFeed));
-
-            /*var addedFieldCount = 0;
-            foreach (var field in typeDef.Fields)
-            {
-                if (field.ExistsInBase)
-                {
-                    continue;
-                }
-                fields.Add(
-                    SF.FieldDeclaration(
-                        SF.List(GetFieldAttributes(field, addedFieldCount)),
-                        SF.TokenList(SF.Token(SyntaxKind.PublicKeyword)),
-                        SF.VariableDeclaration(
-                            SF.ParseTypeName(field.Type.FullName),
-                            SF.SeparatedList(new[] { SF.VariableDeclarator(GeneratorUtilities.GetValidFieldName(field.Name)) })))
-                    .WithTrailingTrivia(SF.LineFeed));
-                addedFieldCount++;
-            }*/
+                    .WithTrailingTrivia(SF.LineFeed)
+                    .WithTrailingTrivia(SF.LineFeed)
+            };
 
             return SF.List(members);
         }
-
-        /*private static IEnumerable<AttributeListSyntax> GetFieldAttributes(FieldDef field, int order)
-        {
-            if ((field.Type.MetaFlags & (int)MetaFlag.AlignBytesFlag) != 0)
-            {
-                yield return GeneratorUtilities.CreateSimpleAttribute("Align");
-            }
-
-            yield return GeneratorUtilities.CreateSimpleAttribute("Order", new[] { SF.AttributeArgument(SF.LiteralExpression(SyntaxKind.NumericLiteralExpression, SF.Literal(order))) });
-            yield return GeneratorUtilities.CreateSimpleAttribute("SerializedName", new[] { SF.AttributeArgument(SF.LiteralExpression(SyntaxKind.StringLiteralExpression, SF.Literal(field.Name))) });
-        }*/
 
         private static TypeParameterListSyntax GetTypeParameters(SimpleTypeDef typeDef)
         {

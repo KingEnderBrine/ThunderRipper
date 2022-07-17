@@ -42,7 +42,7 @@ namespace ThunderClassGenerator.Rewriters
                 else
                 {
                     node = node
-                        .WithLeadingTrivia(SF.Trivia(IfDirectiveUtilities.GetIfDirectiveFromVersionRanges(ranges)), SF.LineFeed)
+                        .WithLeadingTrivia(SF.Trivia(IfDirectiveUtilities.GetIfDirectiveFromVersionRanges(ranges)))
                         .WithTrailingTrivia(SF.Trivia(SF.EndIfDirectiveTrivia(true)), SF.LineFeed);
                 }
             }
